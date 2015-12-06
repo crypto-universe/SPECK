@@ -1,0 +1,8 @@
+[package]
+name = "SPECK"
+version = "0.1.0"
+authors = ["crypto-universe"]
+description = "Fast block cypher SPECK."
+readme = "README.md"
+repository = "https://github.com/crypto-universe/SPECK"
+license = "GNU GPL v3"
