@@ -1,5 +1,5 @@
 [package]
-name = "SPECK"
+name = "speck"
 version = "0.1.0"
 authors = ["crypto-universe"]
 description = "Fast block cypher SPECK."
