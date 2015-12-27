@@ -29,9 +29,9 @@ impl Speck {
 	}
 
 	pub fn speck_encrypt(&self, plaintext: &[u64], result: &mut [u64]) {
-		if (plaintext.len() != 2 || result.len() != 2) {
-			panic!("Wrong block length! Plaintext len = {0}, result len = {1}.", plaintext.len(), result.len());
-		}
+		assert!(plaintext.len() == 2 && result.len() == 2,
+			"Wrong block length! Plaintext len = {0}, result len = {1}.",
+			plaintext.len(), result.len());
 
 		result[0] = plaintext[1];
 		result[1] = plaintext[0];
@@ -44,9 +44,9 @@ impl Speck {
 	}
 
 	pub fn speck_decrypt(&self, ciphertext: &[u64], result: &mut [u64]) {
-		if (ciphertext.len() != 2 || result.len() != 2) {
-			panic!("Wrong block length! Ciphertext len = {0}, result len = {1}.", ciphertext.len(), result.len());
-		}
+		assert!(ciphertext.len() == 2 && result.len() == 2,
+			"Wrong block length! Ciphertext len = {0}, result len = {1}.",
+			ciphertext.len(), result.len());
 
 		result[0] = ciphertext[1];
 		result[1] = ciphertext[0];
@@ -59,6 +59,11 @@ impl Speck {
 	}
 
 	pub fn cbc_encrypt(&self, iv: &[u64; BLOCK_LEN], plaintext: &[u64], ciphertext: &mut [u64]) {
+		assert!(plaintext.len()%2 == 0, "Input buffer has odd length {0}!", plaintext.len());
+		assert!(plaintext.len() == ciphertext.len(),
+			"Length of input array({0}) should be equal to length of output array({1})!",
+			plaintext.len(), ciphertext.len());
+
 		let mut buffer1: [u64; BLOCK_LEN] = [0; BLOCK_LEN];
 
 		buffer1[0] = plaintext[0] ^ iv[0];
@@ -75,6 +80,10 @@ impl Speck {
 	}
 
 	pub fn cbc_decrypt(&self, iv: &[u64; BLOCK_LEN], ciphertext: &[u64], decryptedtext: &mut [u64]) {
+		assert!(ciphertext.len()%2 == 0, "Input buffer has odd length {0}!", ciphertext.len());
+		assert!(ciphertext.len() == decryptedtext.len(),
+			"Length of input array({0}) should be equal to length of output array({1})!",
+			ciphertext.len(), decryptedtext.len());
 
 		self.speck_decrypt(&ciphertext[0 .. 2], &mut decryptedtext[0 .. 2]);
 		decryptedtext[0] ^= iv[0];
