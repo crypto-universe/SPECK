@@ -1,10 +1,11 @@
 //   128/128
 #![allow(unused_parens)]
 
-const ALPHA:   u8 = 8;
-const BETA:    u8 = 3;
+const ALPHA:   u32 = 8;
+const BETA:    u32 = 3;
 pub const KEY_LEN: usize   = 2;
 pub const BLOCK_LEN: usize = 2;
+pub const BLOCK_SIZE: usize = 16;
 pub const ROUNDS:  usize   = 32;
 
 pub struct Speck {
@@ -31,7 +32,7 @@ impl Speck {
 		if (plaintext.len() != 2 || result.len() != 2) {
 			panic!("Wrong block length! Plaintext len = {0}, result len = {1}.", plaintext.len(), result.len());
 		}
-		
+
 		result[0] = plaintext[1];
 		result[1] = plaintext[0];
 
@@ -46,14 +47,14 @@ impl Speck {
 		if (ciphertext.len() != 2 || result.len() != 2) {
 			panic!("Wrong block length! Ciphertext len = {0}, result len = {1}.", ciphertext.len(), result.len());
 		}
-		
+
 		result[0] = ciphertext[1];
 		result[1] = ciphertext[0];
 
 		for i in (0..ROUNDS).rev() {
 			speck_round_backward(result, self.keys_propagated[i]);
 		}
-	
+
 		result.swap(0, 1);
 	}
 
@@ -90,24 +91,14 @@ impl Speck {
 
 #[inline(always)]
 fn speck_round_forward(x: &mut [u64], key: u64) {
-	x[0] = ((ror(x[0], ALPHA)).wrapping_add(x[1])) ^ key;
-	x[1] = rol(x[1], BETA) ^ (x[0]);
+	x[0] = ((x[0].rotate_right(ALPHA)).wrapping_add(x[1])) ^ key;
+	x[1] = x[1].rotate_left(BETA) ^ (x[0]);
 }
 
 #[inline(always)]
 fn speck_round_backward(x: &mut [u64], key: u64) {
-	x[1] = ror((x[1] ^ x[0]), BETA);
-	x[0] = rol(((x[0] ^ key).wrapping_sub(x[1])), ALPHA);
-}
-
-#[inline(always)]
-fn rol(num: u64, amount: u8) -> u64 {
-	(num << amount) | (num >> (64-amount))
-}
-
-#[inline(always)]
-fn ror(num: u64, amount: u8) -> u64 {
-	(num >> amount) | (num << (64-amount))
+	x[1] = (x[1] ^ x[0]).rotate_right(BETA);
+	x[0] = ((x[0] ^ key).wrapping_sub(x[1])).rotate_left(ALPHA);
 }
 
 #[test]
