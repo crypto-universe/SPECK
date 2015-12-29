@@ -43,23 +43,19 @@ impl Speck {
 		(b, a)
 	}
 
-	fn speck_decrypt(&self, ciphertext: &[u64], result: &mut [u64]) {
-		assert!(ciphertext.len() == WORDS_IN_BLOCK && result.len() == WORDS_IN_BLOCK,
-			"Wrong block length! Ciphertext len = {0}, result len = {1}.",
-			ciphertext.len(), result.len());
+	fn speck_decrypt(&self, ciphertext1: u64, ciphertext2: u64) -> (u64, u64) {
+		let mut a = ciphertext2;
+		let mut b = ciphertext1;
 
-		result[0] = ciphertext[1];
-		result[1] = ciphertext[0];
-
-		for i in (0..ROUNDS).rev() {
-			speck_round_backward(result, self.keys_propagated[i]);
+		for curr_key in self.keys_propagated.into_iter().rev() {
+			speck_round_backward(&mut a, &mut b, curr_key);
 		}
 
-		result.swap(0, 1);
+		(b, a)
 	}
 
-	pub fn cbc_encrypt_blocks(&self, iv: &[u64; WORDS_IN_BLOCK], plaintext: &Vec<u64>) -> Vec<u64>{
-		assert!(!plaintext.is_empty(), "Input array should not be empty!");
+	pub fn cbc_encrypt_blocks(&self, iv: &[u64; WORDS_IN_BLOCK], plaintext: &Vec<u64>) -> Vec<u64> {
+		assert!(!plaintext.is_empty(), "Input plaintext should not be empty!");
 		assert!(plaintext.len() % WORDS_IN_BLOCK == 0, "Input buffer has odd length {0}!", plaintext.len());
 
 		let mut ciphertext: Vec<u64> = Vec::with_capacity(plaintext.len()/BYTES_IN_WORD+2);
@@ -75,39 +71,38 @@ impl Speck {
 			ciphertext.push(c);
 			ciphertext.push(d);
 		}
-		
+
 		ciphertext
 	}
 
-	pub fn cbc_decrypt_blocks(&self, iv: &[u64; WORDS_IN_BLOCK], ciphertext: &[u64], decryptedtext: &mut [u64]) {
+	pub fn cbc_decrypt_blocks(&self, iv: &[u64; WORDS_IN_BLOCK], ciphertext: &Vec<u64>) -> Vec<u64> {
+		assert!(!ciphertext.is_empty(), "Input ciphertext should not be empty!");
 		assert!(ciphertext.len() % WORDS_IN_BLOCK == 0, "Input buffer has odd length {0}!", ciphertext.len());
-		assert!(ciphertext.len() == decryptedtext.len(),
-			"Length of input array ({0}) should be equal to length of output array ({1})!",
-			ciphertext.len(), decryptedtext.len());
 
-		self.speck_decrypt(&ciphertext[0 .. 2], &mut decryptedtext[0 .. 2]);
-		decryptedtext[0] ^= iv[0];
-		decryptedtext[1] ^= iv[1];
+		let mut decryptedtext: Vec<u64> = Vec::with_capacity(ciphertext.len()/BYTES_IN_WORD+2);
+
+		let (a, b) = self.speck_decrypt(ciphertext[0], ciphertext[1]);
+		decryptedtext.push(a ^ iv[0]);
+		decryptedtext.push(b ^ iv[1]);
 
 //		TODO: Use step_by in future
 		for i in (2 .. ciphertext.len()).filter(|x| x % 2 == 0) {
-			self.speck_decrypt(&ciphertext[i .. i + 2], &mut decryptedtext[i .. i + 2]);
-			decryptedtext[i]   ^= ciphertext[i-2];
-			decryptedtext[i+1] ^= ciphertext[i-1];
+			let (c, d) = self.speck_decrypt(ciphertext[i], ciphertext[i+1]);
+			decryptedtext.push(c ^ ciphertext[i-2]);
+			decryptedtext.push(d ^ ciphertext[i-1]);
 		}
+
+		decryptedtext
 	}
 
 	//Consider no padding for now
-	pub fn cbc_encrypt_byte_array(&self, iv: &[u8; BYTES_IN_BLOCK], plaintext: &[u8], ciphertext: &mut [u8]) {
-		assert!(ciphertext.len() >= plaintext.len(),
-			"Buffer for plain text ({0}) can't be bigger than ciphertext buffer ({1}).",
-			plaintext.len(), ciphertext.len());
-		assert!(ciphertext.len() % BYTES_IN_BLOCK == 0,
-			"Output buffer length ({0}) should be multiple of block length ({1})!",
-			ciphertext.len(), BYTES_IN_BLOCK);
+	pub fn cbc_encrypt_byte_array(&self, iv: &[u8; BYTES_IN_BLOCK], plaintext: Vec<u8>)/* -> Vec<u8> */{
+		assert!(!plaintext.is_empty(), "Input some text to encrypt.");
 
+		//TODO: Some padding here!
 		let iv2: Vec<u64> = bytes_to_words(iv);
 		let plaintext2: Vec<u64> = bytes_to_words(plaintext);
+		let ciphertext: Vec<u64> = self.cbc_encrypt_blocks(&[iv2[0], iv2[1]], &plaintext2);
 	}
 }
 
@@ -122,9 +117,9 @@ fn speck_round_forward(x1: &mut u64, x2: &mut u64, key: &u64) {
 }
 
 #[inline(always)]
-fn speck_round_backward(x: &mut [u64], key: u64) {
-	x[1] = (x[1] ^ x[0]).rotate_right(BETA);
-	x[0] = ((x[0] ^ key).wrapping_sub(x[1])).rotate_left(ALPHA);
+fn speck_round_backward(x1: &mut u64, x2: &mut u64, key: &u64) {
+	*x2 = (*x2 ^ *x1).rotate_right(BETA);
+	*x1 = ((*x1 ^ key).wrapping_sub(*x2)).rotate_left(ALPHA);
 }
 
 #[test]
@@ -136,44 +131,37 @@ fn basic_works1() {
 	let s: Speck = Speck::new(&key);
 
 	let (cypher_a, cypher_b) = s.speck_encrypt(plain_text[0], plain_text[1]);
-	let ciphertext: [u64; 2] = [cypher_a, cypher_b];
-	assert_eq!(ciphertext, expected_ciphertext);
+	assert_eq!([cypher_a, cypher_b], expected_ciphertext);
 
-	let mut decryptedtext: [u64; 2] = [0; 2];
-	s.speck_decrypt(&ciphertext, &mut decryptedtext);
-	assert_eq!(decryptedtext, plain_text);
-	
-	let key2: [u8; 16] = [07, 06, 05, 04, 03, 02, 01, 00, 0x0f, 0x0e, 0x0d, 0x0c, 0x0b, 0x0a, 0x09, 0x08];
+	let (decr_a, decr_b) = s.speck_decrypt(cypher_a, cypher_b);
+	assert_eq!([decr_a, decr_b], plain_text);
+
+	//let key2: [u8; 16] = [07, 06, 05, 04, 03, 02, 01, 00, 0x0f, 0x0e, 0x0d, 0x0c, 0x0b, 0x0a, 0x09, 0x08];
 	//assert!(bytes_to_words(&key2).len() == 2, "{}", bytes_to_words(&key2).len());
 }
 
 #[test]
 fn cbc_works1() {
-	let plain_text: Vec<u64> = vec![0x7469206564616d20, 0x6c61766975716520];
+	let plaintext: Vec<u64> = vec![0x7469206564616d20, 0x6c61766975716520];
 	let key: [u64; 2] = [0x0706050403020100, 0x0f0e0d0c0b0a0908];
 	let iv1: [u64; 2] = [0xAFF92B19D2240A90, 0xDD55C781B2E48BB0];
 
 	let s: Speck = Speck::new(&key);
 
-	let ciphertext1: Vec<u64> = s.cbc_encrypt_blocks(&iv1, &plain_text);
-
-	let mut decryptedtext1: [u64; 2] = [0; 2];
-	s.cbc_decrypt_blocks(&iv1, &[ciphertext1[0], ciphertext1[1]], &mut decryptedtext1);
-	assert_eq!(decryptedtext1, [plain_text[0], plain_text[1]]);
+	let ciphertext1:    Vec<u64> = s.cbc_encrypt_blocks(&iv1, &plaintext);
+	let decryptedtext1: Vec<u64> = s.cbc_decrypt_blocks(&iv1, &ciphertext1);
+	assert_eq!(decryptedtext1, plaintext);
 }
-/*
+
 #[test]
 fn cbc_works2() {
-	let long_plain_text: [u64; 6] = [0xB6ECC96CEC3EE647, 0x0D698FDCED742594, 0x78BCB34D52D1B961, 0xA03EF56F828A60DE, 0xE725480B83C30B2C, 0xE57669757165C2BA];
+	let long_plaintext: Vec<u64> = vec![0xB6ECC96CEC3EE647, 0x0D698FDCED742594, 0x78BCB34D52D1B961, 0xA03EF56F828A60DE, 0xE725480B83C30B2C, 0xE57669757165C2BA];
 	let key: [u64; 2] = [0x0706050403020100, 0x0f0e0d0c0b0a0908];
 	let iv2: [u64; 2] = [0xD2C4B7D96C49160E, 0x4EFE0C3E3B9FFD85];
 
 	let s: Speck = Speck::new(&key);
 
-	let mut long_ciphertext: [u64; 6] = [0; 6];
-	s.cbc_encrypt_blocks(&iv2, &long_plain_text, &mut long_ciphertext);
-
-	let mut long_decryptedtext: [u64; 6] = [0; 6];
-	s.cbc_decrypt_blocks(&iv2, &long_ciphertext, &mut long_decryptedtext);
-	assert_eq!(long_plain_text, long_decryptedtext);
-}*/
+	let ciphertext2:    Vec<u64> = s.cbc_encrypt_blocks(&iv2, &long_plaintext);
+	let decryptedtext2: Vec<u64> = s.cbc_decrypt_blocks(&iv2, &ciphertext2);
+	assert_eq!(decryptedtext2, long_plaintext);
+}
