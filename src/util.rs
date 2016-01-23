@@ -12,10 +12,3 @@ pub fn words_to_bytes(input: &[u64]) -> &[u8] {
 fn word_to_bytes(input: u64) -> [u8; 8] {
 	unsafe{::std::mem::transmute(input)}
 }*/
-
-//TODO: remove!
-pub fn my_extend_from_slice(input: &mut Vec<u8>, elements: &[u8]) {
-	for x in elements {
-		input.push(*x);
-	}
-}

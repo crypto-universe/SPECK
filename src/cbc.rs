@@ -83,21 +83,18 @@ impl CBC {
 		let mut ciphertext: Vec<u8> = Vec::with_capacity(plaintext.len() + last_block.len());
 
 		let (mut a, mut b) = self.block_cipher.speck_encrypt(plaintext_u64[0].to_be() ^ self.iv[0], plaintext_u64[1].to_be() ^ self.iv[1]);
-		//TODO: remove it!
-		util::my_extend_from_slice(&mut ciphertext, util::words_to_bytes(&[a, b]));
+		ciphertext.extend_from_slice(util::words_to_bytes(&[a, b]));
 
 //		TODO: Better way, but non-working right now
 //		for i in (2..plaintext.len()).step_by(2) {
 		for i in (2 .. plaintext_u64.len()).filter(|x| x % 2 == 0) {
 			let (c, d) = self.block_cipher.speck_encrypt(plaintext_u64[i].to_be() ^ a, plaintext_u64[i+1].to_be() ^ b);
-			//TODO: remove it!
-			util::my_extend_from_slice(&mut ciphertext, util::words_to_bytes(&[c, d]));
+			ciphertext.extend_from_slice(util::words_to_bytes(&[c, d]));
 			a = c;
 			b = d;
 		}
 		let (c, d) = self.block_cipher.speck_encrypt(last_block_u64[0].to_be() ^ a, last_block_u64[1].to_be() ^ b);
-		//TODO: remove it!
-		util::my_extend_from_slice(&mut ciphertext, util::words_to_bytes(&[c, d]));
+		ciphertext.extend_from_slice(util::words_to_bytes(&[c, d]));
 
 		Ok(ciphertext)
 	}
@@ -110,13 +107,11 @@ impl CBC {
 		let mut decrypted: Vec<u8> = Vec::with_capacity(ciphertext.len());
 
 		let (mut a, mut b) = self.block_cipher.speck_decrypt(ciphertext_u64[0].to_be(), ciphertext_u64[1].to_be());
-		//TODO: replace by standard func
-		util::my_extend_from_slice(&mut decrypted, util::words_to_bytes(&[a^self.iv[0], b^self.iv[1]]));
+		decrypted.extend_from_slice(util::words_to_bytes(&[a^self.iv[0], b^self.iv[1]]));
 
 		for i in (2 .. ciphertext_u64.len()).filter(|x| x % 2 == 0) {
 			let (c, d) = self.block_cipher.speck_decrypt(ciphertext_u64[i].to_be(), ciphertext_u64[i+1].to_be() ^ b);
-			//TODO: remove it!
-			util::my_extend_from_slice(&mut decrypted, util::words_to_bytes(&[c^a, d^b]));
+			decrypted.extend_from_slice(util::words_to_bytes(&[c^a, d^b]));
 			a = c;
 			b = d;
 		}
