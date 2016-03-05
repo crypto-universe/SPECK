@@ -1,7 +1,6 @@
 #![allow(unused_parens)]
 
 use padding::*;
-//use std::slice::bytes;
 
 pub struct PKCS7;
 
@@ -14,11 +13,9 @@ impl PaddingGenerator<u8> for PKCS7 {
 		let appendix: usize = length % block_len;
 		let padding_size: usize = (block_len - appendix);
 
-		//TODO:
-		//padding.clone_from_slice(&plaintext[length-appendix..length]);
-		for (d, s) in &mut padding.iter_mut().zip(&plaintext[length-appendix..length]) {
-			*d = *s;
-		}
+		//Clone common u8 to result (padding)
+		padding[0..appendix].clone_from_slice(&plaintext[length-appendix..length]);
+
 		for x in &mut padding[appendix..] {
 			*x = padding_size as u8;
 		}
