@@ -17,6 +17,76 @@ pub struct CBC {
 	padd_generator: PKCS7,
 }
 
+pub struct CBCEncryptIter<'a, 'b> {
+	block_cipher: &'a Speck,
+	//TODO: Consider Iterator<u64> to handle padding easier
+	plaintext: &'b [u64],
+	i: usize,
+	prev_1: u64,
+	prev_2: u64,
+	
+}
+
+pub struct CBCDecryptIter<'c, 'd> {
+	block_cipher: &'c Speck,
+	ciphertext: &'d [u64],
+	i: usize,
+	temp: u64,
+	prev_1: u64,
+	prev_2: u64,
+}
+
+impl<'a, 'b> Iterator for CBCEncryptIter<'a, 'b> {
+	type Item = u64;
+
+	fn next(&mut self) -> Option<u64> {
+		//Simple situation - no padding.
+
+		if (self.i % 2 == 1) {
+			self.i += 1;
+			return Some(self.prev_2);
+		}
+		
+		if (self.i < self.plaintext.len()) {
+			let (a, b) = self.block_cipher.speck_encrypt(self.plaintext[self.i] ^ self.prev_1, self.plaintext[self.i+1] ^ self.prev_2);
+			self.prev_1 = a;
+			self.prev_2 = b;
+			self.i += 1;
+			return Some(a);
+		}
+		else {
+			//If plaintext.is_empty() or end of plaintext
+			return None;
+		}
+	}
+}
+
+impl<'c, 'd> Iterator for CBCDecryptIter<'c, 'd> {
+	type Item = u64;
+
+	fn next(&mut self) -> Option<u64> {
+		//TODO: Remove padding
+		
+		if (self.i % 2 == 1) {
+			self.i += 1;
+			return Some(self.temp);
+		}
+		
+		if (self.i < self.ciphertext.len()) {
+			let (a, b) = self.block_cipher.speck_decrypt(self.ciphertext[self.i], self.ciphertext[self.i+1]);
+			self.temp = b ^ self.prev_2;
+			let result = a ^ self.prev_1;
+			self.prev_1 = self.ciphertext[self.i];
+			self.prev_2 = self.ciphertext[self.i+1];
+			self.i += 1;
+			return Some(result);
+		}
+		else {
+			return None;
+		}
+	}
+}
+
 impl CBC {
 	pub fn new_w(iv: &[u64; WORDS_IN_BLOCK], key: &[u64; WORDS_IN_BLOCK]) -> CBC {
 		CBC {iv: iv.clone(), block_cipher: Speck::new(key), padd_generator: PKCS7 }
@@ -29,7 +99,22 @@ impl CBC {
 		let key3 = [key2[0].to_be(), key2[1].to_be()];
 		CBC {iv: iv3, block_cipher: Speck::new(&key3), padd_generator: PKCS7 }
 	}
-	
+
+	pub fn encrypt_blocks<'a>(&'a self, plaintext: &'a [u64]) -> CBCEncryptIter {
+		assert!(plaintext.len() % WORDS_IN_BLOCK == 0, "Input buffer has odd length {0}!", plaintext.len());
+		
+		//TODO: Remove assert and generate padding here
+		CBCEncryptIter{block_cipher: &self.block_cipher, plaintext: plaintext, i: 0, prev_1: self.iv[0], prev_2: self.iv[1]}
+	}
+
+	pub fn decrypt_blocks<'c>(&'c self, ciphertext: &'c [u64]) -> CBCDecryptIter {
+		assert!(ciphertext.len() % WORDS_IN_BLOCK == 0, "Input buffer has odd length {0}!", ciphertext.len());
+		
+		//TODO: Remove assert?
+		CBCDecryptIter{block_cipher: &self.block_cipher, ciphertext: ciphertext, i: 0, temp: 0, prev_1: self.iv[0], prev_2: self.iv[1]}
+	}
+
+	//#[deprecated]
 	pub fn cbc_encrypt_blocks(&self, plaintext: &[u64]) -> Vec<u64> {
 		assert!(!plaintext.is_empty(), "Input plaintext should not be empty!");
 		assert!(plaintext.len() % WORDS_IN_BLOCK == 0, "Input buffer has odd length {0}!", plaintext.len());
@@ -51,6 +136,7 @@ impl CBC {
 		ciphertext
 	}
 
+	//#[deprecated]
 	pub fn cbc_decrypt_blocks(&self, ciphertext: &[u64]) -> Vec<u64> {
 		assert!(!ciphertext.is_empty(), "Input ciphertext should not be empty!");
 		assert!(ciphertext.len() % WORDS_IN_BLOCK == 0, "Input buffer has odd length {0}!", ciphertext.len());
@@ -159,4 +245,9 @@ fn cbc_works2() {
 	let ciphertext2:    Vec<u64> = c.cbc_encrypt_blocks(&long_plaintext);
 	let decryptedtext2: Vec<u64> = c.cbc_decrypt_blocks(&ciphertext2);
 	assert_eq!(decryptedtext2, long_plaintext);
+
+	let ciphertext3:    Vec<u64> = c.encrypt_blocks(&long_plaintext).collect();
+	let decryptedtext3: Vec<u64> = c.decrypt_blocks(&ciphertext2).collect();
+	assert_eq!(ciphertext2, ciphertext3);
+	assert_eq!(decryptedtext2, decryptedtext3);
 }
