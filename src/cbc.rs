@@ -24,7 +24,6 @@ pub struct CBCEncryptIter<'a, 'b> {
 	i: usize,
 	prev_1: u64,
 	prev_2: u64,
-	
 }
 
 pub struct CBCDecryptIter<'c, 'd> {
@@ -110,7 +109,7 @@ impl CBC {
 	pub fn decrypt_blocks<'c>(&'c self, ciphertext: &'c [u64]) -> CBCDecryptIter {
 		assert!(ciphertext.len() % WORDS_IN_BLOCK == 0, "Input buffer has odd length {0}!", ciphertext.len());
 		
-		//TODO: Remove assert?
+		//TODO: Remove assert as soon as introduce Block instead of u64
 		CBCDecryptIter{block_cipher: &self.block_cipher, ciphertext: ciphertext, i: 0, temp: 0, prev_1: self.iv[0], prev_2: self.iv[1]}
 	}
 
@@ -160,14 +159,15 @@ impl CBC {
 	pub fn cbc_encrypt_byte_array(&self, plaintext: &[u8]) -> Result<Vec<u8>, CipherErrors> {
 		if (plaintext.is_empty()) { return Err(CipherErrors::WrongInput) };
 
-		let mut last_block: [u8; BYTES_IN_BLOCK] = [0; BYTES_IN_BLOCK];
-		self.padd_generator.set_padding(plaintext, &mut last_block, BYTES_IN_BLOCK);
+		let /*mut*/ last_block: [u8; BYTES_IN_BLOCK] = [0; BYTES_IN_BLOCK];
+		//self.padd_generator.set_padding(plaintext, &mut last_block, BYTES_IN_BLOCK);
 
 		let last_block_u64: &[u64] = util::bytes_to_words(&last_block);
 		let plaintext_u64:  &[u64] = util::bytes_to_words(plaintext/*, BYTES_IN_WORD*/);
 
 		let mut ciphertext: Vec<u8> = Vec::with_capacity(plaintext.len() + last_block.len());
 
+		//Fails here if plaintext is less that 1 block
 		let (mut a, mut b) = self.block_cipher.speck_encrypt(plaintext_u64[0].to_be() ^ self.iv[0], plaintext_u64[1].to_be() ^ self.iv[1]);
 		ciphertext.extend_from_slice(util::words_to_bytes(&[a, b]));
 
@@ -202,7 +202,7 @@ impl CBC {
 			b = d;
 		}
 
-		match self.padd_generator.remove_padding(&decrypted, BYTES_IN_BLOCK) {
+		/*match self.padd_generator::remove_padding(&decrypted, BYTES_IN_BLOCK) {
 			Err(_)        => Err(CipherErrors::WrongPadding),
 			Ok(plaintext_len) => {
 				while (decrypted.len() > plaintext_len) {
@@ -210,7 +210,8 @@ impl CBC {
 				}
 				Ok(decrypted)
 			},
-		}
+		}*/
+		Err(CipherErrors::WrongPadding)
 	}
 }
 
