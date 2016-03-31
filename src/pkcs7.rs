@@ -4,8 +4,8 @@ use padding::*;
 
 pub struct PKCS7;
 
-impl PaddingGenerator<u8> for PKCS7 {
-	fn set_padding<'a>(plaintext: &'a [u8], block_len: usize) -> SetPaddingIterator<u8>{
+impl PaddingGenerator for PKCS7 {
+	fn set_padding<'a>(plaintext: &'a [u8], block_len: usize) -> SetPaddingIterator {
 		assert!(block_len != 0 && block_len < 256, "Sorry, wrong block length!");
 
 		let appendix: usize = plaintext.len() % block_len;

@@ -1,42 +1,32 @@
 #![allow(unused_parens)]
-//TODO:
-//struct PKCS5;
-
-extern crate num;
-use self::num::NumCast;
 
 pub enum PaddingError {WrongPadding, WrongCiphertextLength, WrongBlockLength}
 
-pub trait PaddingGenerator<T: NumCast + Copy> {
-	fn set_padding<'a>(plaintext: &'a [T], block_len: usize) -> SetPaddingIterator<T>;
-	fn remove_padding (ciphertext: &[T], block_len: usize) -> Result<usize, PaddingError>;
+pub trait PaddingGenerator {
+	fn set_padding<'a>(plaintext: &'a [u8], block_len: usize) -> SetPaddingIterator<'a>;
+	fn remove_padding (ciphertext: &[u8], block_len: usize) -> Result<usize, PaddingError>;
 }
 
-pub struct SetPaddingIterator<'v, T: 'v + NumCast + Copy> {
-	input: &'v [T],
+pub struct SetPaddingIterator<'v> {
+	input: &'v [u8],
 	index: usize,
 	padding: usize,
 }
 
-impl<'v, T: NumCast + Copy> SetPaddingIterator<'v, T> {
-	pub fn new(plaintext: &'v [T], padding_size: usize) -> SetPaddingIterator<T> {
+impl <'v> SetPaddingIterator<'v> {
+	pub fn new(plaintext: &'v [u8], padding_size: usize) -> SetPaddingIterator<'v> {
 		SetPaddingIterator{input: plaintext, index: 0, padding: padding_size}
 	}
 }
 
-impl<'v, T: NumCast + Copy> Iterator for SetPaddingIterator<'v, T> {
-	type Item = T;
+impl <'v> Iterator for SetPaddingIterator<'v> {
+	type Item = u8;
 
-	fn next(&mut self) -> Option<T> {
+	fn next(&mut self) -> Option<u8> {
 		self.index += 1;
 		return match (self.index-1){
 			i if (i < self.input.len()) => return Some(self.input[i].clone()),
-			i if (i >= self.input.len() && i < self.input.len()+self.padding) => {
-				match (self::num::cast(self.padding)) {
-					Some(x) => Some(x),
-					None    => panic!("Non convertable type T in padding!"),
-				}
-			},
+			i if (i >= self.input.len() && i < self.input.len()+self.padding) => Some(self.padding as u8),
 			_ => None,
 		}
 	}

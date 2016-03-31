@@ -6,6 +6,3 @@ description = "Fast block cypher SPECK."
 readme = "README.md"
 repository = "https://github.com/crypto-universe/SPECK"
 license = "GNU GPL v3"
-
-[dependencies]
-num = "0.1"

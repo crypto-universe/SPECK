@@ -18,14 +18,13 @@ impl Speck {
 		Speck {keys_propagated: key_temp}
 	}
 
-	//TODO: Make loop pretty
 	fn key_schedule(key: &[u64; WORDS_IN_KEY], propagated: &mut [u64; ROUNDS]) {
 		let mut y1: u64 = key[1];
 		let mut y2: u64 = key[0];
 		propagated[0] = key[0];
-		for i in 1..ROUNDS {
+		for (i, item) in &mut propagated.into_iter().enumerate().skip(1) {
 			speck_round_forward(&mut y1, &mut y2, &((i-1) as u64));
-			propagated[i] = y2;
+			(*item) = y2;
 		}
 	}
 
