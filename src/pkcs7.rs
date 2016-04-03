@@ -1,20 +1,23 @@
 #![allow(unused_parens)]
 
 use padding::*;
+use std::iter::{Chain, Repeat, Take};
 
 pub struct PKCS7;
 
 impl PaddingGenerator for PKCS7 {
-	fn set_padding<'a>(plaintext: &'a [u8], block_len: usize) -> SetPaddingIterator {
+	type PaddingIterator = Take<Repeat<u8>>;
+
+	fn set_padding<I: ExactSizeIterator<Item=u8>>(&self, plaintext: I, block_len: usize) -> Chain<I, Take<Repeat<u8>>> {
 		assert!(block_len != 0 && block_len < 256, "Sorry, wrong block length!");
 
 		let appendix: usize = plaintext.len() % block_len;
 		let padding_size: usize = (block_len - appendix);
 
-		SetPaddingIterator::new(plaintext, padding_size)
+		plaintext.chain(::std::iter::repeat(padding_size as u8).take(padding_size))
 	}
 
-	fn remove_padding (ciphertext: &[u8], block_len: usize) -> Result<usize, PaddingError> {
+	fn remove_padding (&self, ciphertext: &[u8], block_len: usize) -> Result<usize, PaddingError> {
 		if (ciphertext.is_empty() || ciphertext.len() % block_len != 0) {
 			return Err(PaddingError::WrongCiphertextLength);
 		}
@@ -35,7 +38,8 @@ type PaddingTuple<'a> = (&'a [u8], usize, &'a [u8]);
 
 fn _check_padding(t: PaddingTuple) {
 	let (raw_text, b, padded_text) = t;
-	let padded_vec: Vec<u8> = PKCS7::set_padding(&raw_text, b).collect::<Vec<u8>>();
+	let p = PKCS7;
+	let padded_vec: Vec<u8> = p.set_padding(raw_text.iter().cloned(), b).collect::<Vec<u8>>();
 	assert_eq!(padded_vec.as_slice(), padded_text);
 	//TODO: remove_padding
 }

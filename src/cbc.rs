@@ -159,28 +159,23 @@ impl CBC {
 	pub fn cbc_encrypt_byte_array(&self, plaintext: &[u8]) -> Result<Vec<u8>, CipherErrors> {
 		if (plaintext.is_empty()) { return Err(CipherErrors::WrongInput) };
 
-		let /*mut*/ last_block: [u8; BYTES_IN_BLOCK] = [0; BYTES_IN_BLOCK];
-		//self.padd_generator.set_padding(plaintext, &mut last_block, BYTES_IN_BLOCK);
+		//TODO: Do not collect padded text. Use it in lazy way, as Iterator
+		let padded_plaintext: Vec<u8> = self.padd_generator.set_padding(plaintext.iter().cloned(), BYTES_IN_BLOCK).collect::<Vec<u8>>();
+		let padded_plaintext_u64:  &[u64] = util::bytes_to_words(padded_plaintext.as_slice()/*, BYTES_IN_WORD*/);
 
-		let last_block_u64: &[u64] = util::bytes_to_words(&last_block);
-		let plaintext_u64:  &[u64] = util::bytes_to_words(plaintext/*, BYTES_IN_WORD*/);
+		let mut ciphertext: Vec<u8> = Vec::with_capacity(padded_plaintext.len());
 
-		let mut ciphertext: Vec<u8> = Vec::with_capacity(plaintext.len() + last_block.len());
-
-		//Fails here if plaintext is less that 1 block
-		let (mut a, mut b) = self.block_cipher.speck_encrypt(plaintext_u64[0].to_be() ^ self.iv[0], plaintext_u64[1].to_be() ^ self.iv[1]);
+		let (mut a, mut b) = self.block_cipher.speck_encrypt(padded_plaintext_u64[0].to_be() ^ self.iv[0], padded_plaintext_u64[1].to_be() ^ self.iv[1]);
 		ciphertext.extend_from_slice(util::words_to_bytes(&[a, b]));
 
 //		TODO: Better way, but non-working right now
 //		for i in (2..plaintext.len()).step_by(2) {
-		for i in (2 .. plaintext_u64.len()).filter(|x| x % 2 == 0) {
-			let (c, d) = self.block_cipher.speck_encrypt(plaintext_u64[i].to_be() ^ a, plaintext_u64[i+1].to_be() ^ b);
+		for i in (2 .. padded_plaintext_u64.len()).filter(|x| x % 2 == 0) {
+			let (c, d) = self.block_cipher.speck_encrypt(padded_plaintext_u64[i].to_be() ^ a, padded_plaintext_u64[i+1].to_be() ^ b);
 			ciphertext.extend_from_slice(util::words_to_bytes(&[c, d]));
 			a = c;
 			b = d;
 		}
-		let (c, d) = self.block_cipher.speck_encrypt(last_block_u64[0].to_be() ^ a, last_block_u64[1].to_be() ^ b);
-		ciphertext.extend_from_slice(util::words_to_bytes(&[c, d]));
 
 		Ok(ciphertext)
 	}
