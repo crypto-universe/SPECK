@@ -8,7 +8,7 @@ pub struct PKCS7;
 impl PaddingGenerator for PKCS7 {
 	type PaddingIterator = Take<Repeat<u8>>;
 
-	fn set_padding<I: ExactSizeIterator<Item=u8>>(&self, plaintext: I, block_len: usize) -> Chain<I, Take<Repeat<u8>>> {
+	fn set_padding<I: ExactSizeIterator<Item=u8>> (&self, plaintext: I, block_len: usize) -> Chain<I, Take<Repeat<u8>>> {
 		assert!(block_len != 0 && block_len < 256, "Sorry, wrong block length!");
 
 		let appendix: usize = plaintext.len() % block_len;
@@ -17,31 +17,46 @@ impl PaddingGenerator for PKCS7 {
 		plaintext.chain(::std::iter::repeat(padding_size as u8).take(padding_size))
 	}
 
-	fn remove_padding (&self, ciphertext: &[u8], block_len: usize) -> Result<usize, PaddingError> {
-		if (ciphertext.is_empty() || ciphertext.len() % block_len != 0) {
+	fn remove_padding<J> (&self, mut ciphertext: J, block_len: usize) -> Result<J, PaddingError>
+		where J: ExactSizeIterator<Item=u8> + DoubleEndedIterator<Item=u8> {
+		if (ciphertext.len() == 0 || ciphertext.len() % block_len != 0) {
 			return Err(PaddingError::WrongCiphertextLength);
 		}
 
-		let cl = ciphertext.len();
-		let padding_size: u8 = ciphertext[cl - 1];
+		let padding_byte: u8 = ciphertext.next_back().unwrap();
+		let padding_size: usize = padding_byte as usize - 1;
 
-		let (text, padding) = ciphertext.split_at(cl - padding_size as usize);
-
-		match padding.iter().all(|&x| x == padding_size) {
-			true  => Ok(text.len()),
-			false => Err(PaddingError::WrongPadding),
+		let result: bool = ciphertext.by_ref().rev().take(padding_size).all(|x| x == padding_byte);
+		if (result) {
+			Ok(ciphertext)
+		} else {
+			Err(PaddingError::WrongPadding)
 		}
 	}
 }
 
 type PaddingTuple<'a> = (&'a [u8], usize, &'a [u8]);
 
-fn _check_padding(t: PaddingTuple) {
+fn _check_set_padding(t: PaddingTuple) {
 	let (raw_text, b, padded_text) = t;
 	let p = PKCS7;
 	let padded_vec: Vec<u8> = p.set_padding(raw_text.iter().cloned(), b).collect::<Vec<u8>>();
 	assert_eq!(padded_vec.as_slice(), padded_text);
-	//TODO: remove_padding
+}
+
+fn _check_remove_padding(t: PaddingTuple) {
+	let (raw_text, b, padded_text) = t;
+	let p = PKCS7;
+	let new_raw_text = p.remove_padding(padded_text.iter().cloned(), b);
+	match (new_raw_text) {
+		Ok(some_iter) => assert_eq!(some_iter.collect::<Vec<u8>>().as_slice(), raw_text),
+		Err(some_err) => panic!("Padding error!\n Input:    {:?}\n Expected: {:?}\n Block length: {:?}\n Error type: {:?}\n", padded_text, raw_text, b, some_err),
+	}
+}
+
+fn _check_padding(t: PaddingTuple) {
+	_check_set_padding(t);
+	_check_remove_padding(t);
 }
 
 #[test]
@@ -98,4 +113,32 @@ fn pkcs7_block_misc() {
 	_check_padding(tuple3);
 	_check_padding(tuple4);
 	_check_padding(tuple5);
+}
+
+#[test]
+#[should_panic]
+fn pkcs7_should_fail_1() {
+	let tuple1: PaddingTuple = (&[0xAA, 0xCC, 0xEE, 0xBB, 0x13], 7, &[0xAA, 0xCC, 0xEE, 0xBB, 0x13, 01, 02]);
+	_check_remove_padding(tuple1);
+}
+
+#[test]
+#[should_panic]
+fn pkcs7_should_fail_2() {
+	let tuple1: PaddingTuple = (&[0xAA, 0xCC, 0xEE, 0xBB, 0x13], 7, &[0xAA, 0xCC, 0xEE, 0xBB, 0x13, 02, 02, 02]);
+	_check_remove_padding(tuple1);
+}
+
+#[test]
+#[should_panic]
+fn pkcs7_should_fail_3() {
+	let tuple1: PaddingTuple = (&[0xAA, 0xCC, 0xEE, 0xBB, 0x13], 7, &[0xAA, 0xCC, 0xEE, 0xBB, 0x13, 02]);
+	_check_remove_padding(tuple1);
+}
+
+#[test]
+#[should_panic]
+fn pkcs7_should_fail_4() {
+	let tuple1: PaddingTuple = (&[0xAA, 0xCC, 0xEE, 0xBB, 0x13], 7, &[0xAA, 0xCC, 0xEE, 0xBB, 03, 03, 03]);
+	_check_remove_padding(tuple1);
 }

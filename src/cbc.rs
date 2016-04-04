@@ -88,7 +88,8 @@ impl<'c, 'd> Iterator for CBCDecryptIter<'c, 'd> {
 
 impl CBC {
 	pub fn new_w(iv: &[u64; WORDS_IN_BLOCK], key: &[u64; WORDS_IN_BLOCK]) -> CBC {
-		CBC {iv: iv.clone(), block_cipher: Speck::new(key), padd_generator: PKCS7 }
+		//TODO: Is it OK to write "iv: *iv" on Copy type?
+		CBC {iv: *iv, block_cipher: Speck::new(key), padd_generator: PKCS7 }
 	}
 	
 	pub fn new_b(iv: &[u8; BYTES_IN_BLOCK], key: &[u8; BYTES_IN_BLOCK]) -> CBC {
