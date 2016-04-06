@@ -2,6 +2,7 @@
 
 use speck::Speck;
 use padding::PaddingGenerator;
+use std::marker::PhantomData;
 
 use util;
 
@@ -14,7 +15,7 @@ pub enum CipherErrors {WrongPadding, WrongInput}
 pub struct CBC <PG> {
 	iv: [u64; 2],
 	block_cipher: Speck,
-	padd_generator: PG,
+	padd_generator: PhantomData<PG>,
 }
 
 pub struct CBCEncryptIter<'a, 'b> {
@@ -87,16 +88,16 @@ impl<'c, 'd> Iterator for CBCDecryptIter<'c, 'd> {
 }
 
 impl <PG: PaddingGenerator> CBC <PG> {
-	pub fn new_w(iv: &[u64; WORDS_IN_BLOCK], key: &[u64; WORDS_IN_BLOCK], padd_gen: PG) -> CBC<PG> {
-		CBC {iv: iv.clone(), block_cipher: Speck::new(key), padd_generator: padd_gen }
+	pub fn new_w(iv: &[u64; WORDS_IN_BLOCK], key: &[u64; WORDS_IN_BLOCK]) -> CBC<PG> {
+		CBC {iv: *iv, block_cipher: Speck::new(key), padd_generator: PhantomData::<PG> }
 	}
 	
-	pub fn new_b(iv: &[u8; BYTES_IN_BLOCK], key: &[u8; BYTES_IN_BLOCK], padd_gen: PG) -> CBC<PG> {
+	pub fn new_b(iv: &[u8; BYTES_IN_BLOCK], key: &[u8; BYTES_IN_BLOCK]) -> CBC<PG> {
 		let iv2  = util::bytes_to_words(iv);
 		let key2 = util::bytes_to_words(key);
 		let iv3  = [iv2[0].to_be(), iv2[1].to_be()];
 		let key3 = [key2[0].to_be(), key2[1].to_be()];
-		CBC {iv: iv3, block_cipher: Speck::new(&key3), padd_generator: padd_gen }
+		CBC {iv: iv3, block_cipher: Speck::new(&key3), padd_generator: PhantomData::<PG> }
 	}
 
 	pub fn encrypt_blocks<'a>(&'a self, plaintext: &'a [u64]) -> CBCEncryptIter {
@@ -160,7 +161,7 @@ impl <PG: PaddingGenerator> CBC <PG> {
 		if (plaintext.is_empty()) { return Err(CipherErrors::WrongInput) };
 
 		//TODO: Do not collect padded text. Use it in lazy way, as Iterator
-		let padded_plaintext: Vec<u8> = self.padd_generator.set_padding(plaintext.iter().cloned(), BYTES_IN_BLOCK).collect::<Vec<u8>>();
+		let padded_plaintext: Vec<u8> = PG::set_padding(plaintext.iter().cloned(), BYTES_IN_BLOCK).collect::<Vec<u8>>();
 		let padded_plaintext_u64:  &[u64] = util::bytes_to_words(padded_plaintext.as_slice()/*, BYTES_IN_WORD*/);
 
 		let mut ciphertext: Vec<u8> = Vec::with_capacity(padded_plaintext.len());
@@ -221,7 +222,7 @@ fn cbc_works1() {
 	let iv1: [u64; 2] = [0xAFF92B19D2240A90, 0xDD55C781B2E48BB0];
 
 	let s: Speck = Speck::new(&key);
-	let c: CBC<PKCS7> = CBC::new_w(&iv1, &key, PKCS7);
+	let c: CBC<PKCS7> = CBC::new_w(&iv1, &key);
 
 	let ciphertext1: Vec<u64> = c.cbc_encrypt_blocks(&plaintext);
 	let (ct1, ct2) = s.speck_encrypt(iv1[0] ^ plaintext[0], iv1[1] ^ plaintext[1]);
@@ -239,7 +240,7 @@ fn cbc_works2() {
 	let key: [u64; 2]  = [0x0706050403020100, 0x0f0e0d0c0b0a0908];
 	let iv2: [u64; 2]  = [0xD2C4B7D96C49160E, 0x4EFE0C3E3B9FFD85];
 
-	let c: CBC<ANSI_X923> = CBC::new_w(&iv2, &key, ANSI_X923);
+	let c: CBC<ANSI_X923> = CBC::new_w(&iv2, &key);
 
 	let ciphertext2:    Vec<u64> = c.cbc_encrypt_blocks(&long_plaintext);
 	let decryptedtext2: Vec<u64> = c.cbc_decrypt_blocks(&ciphertext2);

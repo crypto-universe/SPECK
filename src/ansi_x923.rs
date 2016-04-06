@@ -4,13 +4,12 @@
 use padding::*;
 use std::iter::{Chain, Once, Repeat, Take};
 
-#[derive(Clone)]
 pub struct ANSI_X923;
 
 impl PaddingGenerator for ANSI_X923 {
 	type PaddingIterator = Chain<Take<Repeat<u8>>, Once<u8>>;
 
-	fn set_padding<I: ExactSizeIterator<Item=u8>> (&self, plaintext: I, block_len: usize) -> Chain<I, Chain<Take<Repeat<u8>>, Once<u8>>> {
+	fn set_padding<I: ExactSizeIterator<Item=u8>> (plaintext: I, block_len: usize) -> Chain<I, Chain<Take<Repeat<u8>>, Once<u8>>> {
 		assert!(block_len != 0 && block_len < 256, "Sorry, wrong block length!");
 
 		let appendix: usize = plaintext.len() % block_len;
@@ -19,7 +18,7 @@ impl PaddingGenerator for ANSI_X923 {
 		plaintext.chain(::std::iter::repeat(0u8).take(padding_size-1).chain(::std::iter::once(padding_size as u8)))
 	}
 
-	fn remove_padding<J> (&self, mut ciphertext: J, block_len: usize) -> Result<J, PaddingError>
+	fn remove_padding<J> (mut ciphertext: J, block_len: usize) -> Result<J, PaddingError>
 		where J: ExactSizeIterator<Item=u8> + DoubleEndedIterator<Item=u8> {
 		if (ciphertext.len() == 0 || ciphertext.len() % block_len != 0) {
 			return Err(PaddingError::WrongCiphertextLength);
@@ -40,23 +39,21 @@ impl PaddingGenerator for ANSI_X923 {
 #[test]
 fn ansi_x923_block_8() {
 	const B: usize = 8;
-	let padding = &ANSI_X923;
 
 	let tuple1: PaddingTuple = (&[], B, &[0, 0, 0, 0, 0, 0, 0, 08]);
 	let tuple2: PaddingTuple = (&[0xAA, 0xCC, 0xEE, 0xBB, 0x13], B, &[0xAA, 0xCC, 0xEE, 0xBB, 0x13, 00, 00, 03]);
 	let tuple3: PaddingTuple = (&[0xAA, 0xCC, 0xEE, 0x48, 0x13, 0xFF, 0x11, 0xDD], B, &[0xAA, 0xCC, 0xEE, 0x48, 0x13, 0xFF, 0x11, 0xDD, 0, 0, 0, 0, 0, 0, 0, 08]);
 	let tuple4: PaddingTuple = (&[0x10, 0xCC, 0x73, 0xBB, 0x13, 0xFF, 0x11, 0xDD, 0x50, 0x24], B, &[0x10, 0xCC, 0x73, 0xBB, 0x13, 0xFF, 0x11, 0xDD, 0x50, 0x24, 0, 0, 0, 0, 0, 06]);
 
-	_check_padding(padding, tuple1);
-	_check_padding(padding, tuple2);
-	_check_padding(padding, tuple3);
-	_check_padding(padding, tuple4);
+	_check_padding::<ANSI_X923>(tuple1);
+	_check_padding::<ANSI_X923>(tuple2);
+	_check_padding::<ANSI_X923>(tuple3);
+	_check_padding::<ANSI_X923>(tuple4);
 }
 
 #[test]
 fn ansi_x923_block_16() {
 	const B: usize = 16;
-	let padding = &ANSI_X923;
 
 	let tuple1: PaddingTuple = (&[], B, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16]);
 	let tuple2: PaddingTuple = (&[0xAA, 0xCC, 0xEE, 0xBB, 0x13], B, &[0xAA, 0xCC, 0xEE, 0xBB, 0x13, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 11]);
@@ -69,19 +66,17 @@ fn ansi_x923_block_16() {
 								B,
 								&[0x10, 0xCC, 0x73, 0xBB, 0x13, 0xFF, 0x11, 0xDD, 0x50, 0x24, 0x37, 0x22, 0xF5, 0xD3, 00, 0x1C, 0xCA, 0x6D, 0x34, 0x66, 0xB1, 0xB1, 0x25, 0, 0, 0, 0, 0, 0, 0, 0, 09]);
 
-	_check_padding(padding, tuple1);
-	_check_padding(padding, tuple2);
-	_check_padding(padding, tuple3);
-	_check_padding(padding, tuple4);
-	_check_padding(padding, tuple5);
-	_check_padding(padding, tuple6);
+	_check_padding::<ANSI_X923>(tuple1);
+	_check_padding::<ANSI_X923>(tuple2);
+	_check_padding::<ANSI_X923>(tuple3);
+	_check_padding::<ANSI_X923>(tuple4);
+	_check_padding::<ANSI_X923>(tuple5);
+	_check_padding::<ANSI_X923>(tuple6);
 
 }
 
 #[test]
 fn ansi_x923_block_misc() {
-	let padding = &ANSI_X923;
-
 	let tuple1: PaddingTuple = (&[], 3, &[0, 0, 3]);
 	let tuple2: PaddingTuple = (&[0xAA, 0xCC, 0xEE, 0xBB, 0x13], 7, &[0xAA, 0xCC, 0xEE, 0xBB, 0x13, 00, 02]);
 	let tuple3: PaddingTuple = (&[0xAA, 0xCC, 0xEE, 0x48, 0x13, 0xFF, 0x11, 0xDD], 11, &[0xAA, 0xCC, 0xEE, 0x48, 0x13, 0xFF, 0x11, 0xDD, 00, 00, 03]);
@@ -90,41 +85,37 @@ fn ansi_x923_block_misc() {
 								13,
 								&[0x10, 0xCC, 0x73, 0xBB, 0x13, 0xFF, 0x11, 0xDD, 0x50, 0x24, 0x37, 0x22, 0xF5, 0xD3, 00, 0x1C, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10]);
 
-	_check_padding(padding, tuple1);
-	_check_padding(padding, tuple2);
-	_check_padding(padding, tuple3);
-	_check_padding(padding, tuple4);
-	_check_padding(padding, tuple5);
+	_check_padding::<ANSI_X923>(tuple1);
+	_check_padding::<ANSI_X923>(tuple2);
+	_check_padding::<ANSI_X923>(tuple3);
+	_check_padding::<ANSI_X923>(tuple4);
+	_check_padding::<ANSI_X923>(tuple5);
 }
 
 #[test]
 #[should_panic]
 fn ansi_x923_should_fail_1() {
-	let padding = &ANSI_X923;
 	let tuple1: PaddingTuple = (&[0xAA, 0xCC, 0xEE, 0xBB, 0x13], 7, &[0xAA, 0xCC, 0xEE, 0xBB, 0x13, 01, 02]);
-	_check_remove_padding(padding, tuple1);
+	_check_remove_padding::<ANSI_X923>(tuple1);
 }
 
 #[test]
 #[should_panic]
 fn ansi_x923_should_fail_2() {
-	let padding = &ANSI_X923;
 	let tuple1: PaddingTuple = (&[0xAA, 0xCC, 0xEE, 0xBB, 0x13], 7, &[0xAA, 0xCC, 0xEE, 0xBB, 0x13, 00, 00, 02]);
-	_check_remove_padding(padding, tuple1);
+	_check_remove_padding::<ANSI_X923>(tuple1);
 }
 
 #[test]
 #[should_panic]
 fn ansi_x923_should_fail_3() {
-	let padding = &ANSI_X923;
 	let tuple1: PaddingTuple = (&[0xAA, 0xCC, 0xEE, 0xBB, 0x13], 7, &[0xAA, 0xCC, 0xEE, 0xBB, 0x13, 01]);
-	_check_remove_padding(padding, tuple1);
+	_check_remove_padding::<ANSI_X923>(tuple1);
 }
 
 #[test]
 #[should_panic]
 fn ansi_x923_should_fail_4() {
-	let padding = &ANSI_X923;
 	let tuple1: PaddingTuple = (&[0xAA, 0xCC, 0xEE, 0xBB, 0x13], 7, &[0xAA, 0xCC, 0xEE, 0xBB, 00, 00, 03]);
-	_check_remove_padding(padding, tuple1);
+	_check_remove_padding::<ANSI_X923>(tuple1);
 }
