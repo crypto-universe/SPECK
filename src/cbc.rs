@@ -2,7 +2,9 @@
 
 use speck::Speck;
 use padding::PaddingGenerator;
+use block128::*;
 use std::marker::PhantomData;
+use std::iter::ExactSizeIterator;
 
 use util;
 
@@ -160,19 +162,21 @@ impl <PG: PaddingGenerator> CBC <PG> {
 	pub fn cbc_encrypt_byte_array(&self, plaintext: &[u8]) -> Result<Vec<u8>, CipherErrors> {
 		if (plaintext.is_empty()) { return Err(CipherErrors::WrongInput) };
 
-		//TODO: Do not collect padded text. Use it in lazy way, as Iterator
-		let padded_plaintext: Vec<u8> = PG::set_padding(plaintext.iter().cloned(), BYTES_IN_BLOCK).collect::<Vec<u8>>();
-		let padded_plaintext_u64:  &[u64] = util::bytes_to_words(padded_plaintext.as_slice()/*, BYTES_IN_WORD*/);
+		let padded_plaintext_iter = PG::set_padding(plaintext.iter().cloned(), BYTES_IN_BLOCK);
 
-		let mut ciphertext: Vec<u8> = Vec::with_capacity(padded_plaintext.len());
+		let mut ciphertext: Vec<u8> = Vec::with_capacity(padded_plaintext_iter.len());
 
-		let (mut a, mut b) = self.block_cipher.speck_encrypt(padded_plaintext_u64[0].to_be() ^ self.iv[0], padded_plaintext_u64[1].to_be() ^ self.iv[1]);
+		let mut padded_plaintext_blocks_iter = Block128::to_block_iter(padded_plaintext_iter);
+
+		//Plaintext is padded, so there is at leas 1 block. Unwrap with no worries.
+		let first_block = padded_plaintext_blocks_iter.next().unwrap();
+		let (mut a, mut b) = self.block_cipher.speck_encrypt(first_block.get_a() ^ self.iv[0], first_block.get_b() ^ self.iv[1]);
 		ciphertext.extend_from_slice(util::words_to_bytes(&[a, b]));
 
-//		TODO: Better way, but non-working right now
-//		for i in (2..plaintext.len()).step_by(2) {
-		for i in (2 .. padded_plaintext_u64.len()).filter(|x| x % 2 == 0) {
-			let (c, d) = self.block_cipher.speck_encrypt(padded_plaintext_u64[i].to_be() ^ a, padded_plaintext_u64[i+1].to_be() ^ b);
+		for current_block in padded_plaintext_blocks_iter {
+			let t1 = current_block.get_a();
+			let t2 = current_block.get_b();
+			let (c, d) = self.block_cipher.speck_encrypt(t1 ^ a, t2 ^ b);
 			ciphertext.extend_from_slice(util::words_to_bytes(&[c, d]));
 			a = c;
 			b = d;

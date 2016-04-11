@@ -1,20 +1,20 @@
 #![allow(unused_parens)]
 
 use padding::*;
-use std::iter::{Chain, Repeat, Take};
+use std::iter::{Repeat, Take};
 
 pub struct PKCS7;
 
 impl PaddingGenerator for PKCS7 {
 	type PaddingIterator = Take<Repeat<u8>>;
 
-	fn set_padding<I: ExactSizeIterator<Item=u8>> (plaintext: I, block_len: usize) -> Chain<I, Take<Repeat<u8>>> {
+	fn set_padding<I: ExactSizeIterator<Item=u8>> (plaintext: I, block_len: usize) -> MyChain<I, Self::PaddingIterator> {
 		assert!(block_len != 0 && block_len < 256, "Sorry, wrong block length!");
 
 		let appendix: usize = plaintext.len() % block_len;
 		let padding_size: usize = (block_len - appendix);
 
-		plaintext.chain(::std::iter::repeat(padding_size as u8).take(padding_size))
+		MyChain::new(plaintext, ::std::iter::repeat(padding_size as u8).take(padding_size), padding_size)
 	}
 
 	fn remove_padding<J> (mut ciphertext: J, block_len: usize) -> Result<J, PaddingError>

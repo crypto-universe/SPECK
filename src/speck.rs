@@ -47,26 +47,26 @@ impl Speck {
 	}
 }
 
-#[inline(always)]
+#[inline]
 fn speck_round_forward(x1: &mut u64, x2: &mut u64, key: &u64) {
 	*x1 = ((x1.rotate_right(ALPHA)).wrapping_add(*x2)) ^ key;
 	*x2 = x2.rotate_left(BETA) ^ (*x1);
 }
 
-#[inline(always)]
+#[inline]
 fn speck_round_backward(x1: &mut u64, x2: &mut u64, key: &u64) {
 	*x2 = (*x2 ^ *x1).rotate_right(BETA);
 	*x1 = ((*x1 ^ key).wrapping_sub(*x2)).rotate_left(ALPHA);
 }
 
 #[allow(dead_code)]
-#[inline(always)]
+#[inline]
 fn rol(num: u64, amount: u8) -> u64 {
 	(num << amount) | (num >> (64-amount))
 }
 
 #[allow(dead_code)]
-#[inline(always)]
+#[inline]
 fn ror(num: u64, amount: u8) -> u64 {
 	(num >> amount) | (num << (64-amount))
 }

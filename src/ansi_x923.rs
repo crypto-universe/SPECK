@@ -9,13 +9,13 @@ pub struct ANSI_X923;
 impl PaddingGenerator for ANSI_X923 {
 	type PaddingIterator = Chain<Take<Repeat<u8>>, Once<u8>>;
 
-	fn set_padding<I: ExactSizeIterator<Item=u8>> (plaintext: I, block_len: usize) -> Chain<I, Chain<Take<Repeat<u8>>, Once<u8>>> {
+	fn set_padding<I: ExactSizeIterator<Item=u8>> (plaintext: I, block_len: usize) -> MyChain<I, Self::PaddingIterator> {
 		assert!(block_len != 0 && block_len < 256, "Sorry, wrong block length!");
 
 		let appendix: usize = plaintext.len() % block_len;
 		let padding_size: usize = (block_len - appendix);
 
-		plaintext.chain(::std::iter::repeat(0u8).take(padding_size-1).chain(::std::iter::once(padding_size as u8)))
+		MyChain::new(plaintext, ::std::iter::repeat(0u8).take(padding_size-1).chain(::std::iter::once(padding_size as u8)), padding_size)
 	}
 
 	fn remove_padding<J> (mut ciphertext: J, block_len: usize) -> Result<J, PaddingError>

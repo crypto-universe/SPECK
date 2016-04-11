@@ -1,5 +1,7 @@
 #![allow(unused_parens)]
 
+//use std::iter::Chain;
+
 #[derive(Debug)]
 //ALARM! Prevent this info to leak! Otherwise system will be vulnerable to padding oracle attack!
 pub enum PaddingError {WrongPadding, WrongCiphertextLength/*, WrongBlockLength*/}
@@ -7,8 +9,44 @@ pub enum PaddingError {WrongPadding, WrongCiphertextLength/*, WrongBlockLength*/
 pub trait PaddingGenerator {
 	type PaddingIterator: Iterator<Item=u8>;
 
-	fn set_padding<I: ExactSizeIterator<Item=u8>> (plaintext: I, block_len: usize) -> ::std::iter::Chain<I, Self::PaddingIterator>;
+	fn set_padding<I: ExactSizeIterator<Item=u8>> (plaintext: I, block_len: usize) -> MyChain<I, Self::PaddingIterator>;
 	fn remove_padding<J: ExactSizeIterator<Item=u8> + DoubleEndedIterator<Item=u8>> (ciphertext: J, block_len: usize) -> Result<J, PaddingError>;
+}
+
+//This chain will implement ExactSizeIterator. Be careful, length overflow possible!
+pub struct MyChain<A, B> {
+	chain: ::std::iter::Chain<A, B>,
+	length: usize,
+}
+
+impl<A, B> MyChain<A, B> where
+	A: ExactSizeIterator<Item=u8>,
+	B: Iterator<Item=A::Item>
+{
+	pub fn new(iter1: A, iter2: B, iter2_len: usize) -> MyChain<A, B>{
+		let local_len = iter1.len() + iter2_len;
+		MyChain {chain: iter1.chain(iter2), length: local_len}
+	}
+}
+
+impl<A, B> Iterator for MyChain<A, B> where
+	A: ExactSizeIterator<Item=u8>,
+	B: Iterator<Item=A::Item>
+{
+	type Item = u8;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		self.chain.next()
+	}
+}
+
+impl<A, B> ExactSizeIterator for MyChain<A, B> where
+	A: ExactSizeIterator<Item=u8>,
+	B: Iterator<Item=A::Item>
+{
+	fn len(&self) -> usize {
+		self.length
+	}
 }
 
 //============== Functions for testing paddings ==================
