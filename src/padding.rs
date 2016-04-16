@@ -1,7 +1,5 @@
 #![allow(unused_parens)]
 
-//use std::iter::Chain;
-
 #[derive(Debug)]
 //ALARM! Prevent this info to leak! Otherwise system will be vulnerable to padding oracle attack!
 pub enum PaddingError {WrongPadding, WrongCiphertextLength/*, WrongBlockLength*/}
@@ -13,10 +11,11 @@ pub trait PaddingGenerator {
 	fn remove_padding<J: ExactSizeIterator<Item=u8> + DoubleEndedIterator<Item=u8>> (ciphertext: J, block_len: usize) -> Result<J, PaddingError>;
 }
 
-//This chain will implement ExactSizeIterator. Be careful, length overflow possible!
+//============== Special return type, which implements ExactSizeIterator ==================
+
 pub struct MyChain<A, B> {
 	chain: ::std::iter::Chain<A, B>,
-	length: usize,
+	length: usize,	//Be careful, length overflow possible (in theory)!
 }
 
 impl<A, B> MyChain<A, B> where

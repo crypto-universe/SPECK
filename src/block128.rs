@@ -1,8 +1,10 @@
 use std::iter::FromIterator;
+use std::ops::BitXor;
 
 const BYTES_IN_BLOCK: usize   = 16;
 const LAST_BLOCK_MASK: u64    = 0xff;
 
+#[derive(Clone, Copy, Debug)]
 pub struct Block128 {
 	a: u64,
 	b: u64,
@@ -17,12 +19,34 @@ impl Block128 {
 		Block128Iter::new(source)
 	}
 
+	pub fn to_byte_iter<J: ExactSizeIterator<Item=Block128>>(source: J) -> Byte128Iter<J> {
+		Byte128Iter::new(source)	//like FlatMap
+	}
+
 	pub fn get_a(&self) -> u64 {
 		self.a
 	}
 
 	pub fn get_b(&self) -> u64 {
 		self.b
+	}
+}
+
+impl PartialEq for Block128 {
+	fn eq(&self, other: &Block128) -> bool {
+		self.a == other.get_a() && self.b == other.get_b()
+	}
+
+	fn ne(&self, other: &Block128) -> bool {
+		self.a != other.get_a() || self.b != other.get_b()
+	}
+}
+
+impl BitXor for Block128 {
+	type Output = Block128;
+
+	fn bitxor(self, rhs: Block128) -> Block128 {
+		Block128::new(self.a ^ rhs.get_a(), self.b ^ rhs.get_b())
 	}
 }
 
@@ -52,7 +76,7 @@ impl IntoIterator for Block128 {
 
 impl FromIterator<u8> for Block128 {
 	fn from_iter<I: IntoIterator<Item=u8>>(iterator: I) -> Block128 {
-		use std::ops::{BitXor, Shl};
+		use std::ops::Shl;
 		let mut iter = iterator.into_iter();
 		let mut a: u64 = 0;
 
@@ -71,7 +95,76 @@ impl FromIterator<u8> for Block128 {
 		Block128::new(a, b)
 	}
 }
+//======================================================================================================================
+pub struct Block128Iter<J> {
+	src_iter: J,
+	index: usize,
+}
 
+impl<J> Block128Iter<J> where J: ExactSizeIterator<Item=u8> {
+	pub fn new(src: J) -> Block128Iter<J> {
+		let my_len = src.len()/BYTES_IN_BLOCK;
+		Block128Iter::<J> {src_iter: src, index: my_len}
+	}
+}
+
+impl<J> Iterator for Block128Iter<J> where J: ExactSizeIterator<Item=u8> {
+	type Item = Block128;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		if self.index > 0 {
+			self.index -= 1;
+			Some(self.src_iter.by_ref().collect())
+		} else {
+			None
+		}
+	}
+}
+
+impl<J> ExactSizeIterator for Block128Iter<J> where J: ExactSizeIterator<Item=u8> {
+	fn len(&self) -> usize {
+		self.src_iter.len() / BYTES_IN_BLOCK
+	}
+}
+//======================================================================================================================
+pub struct Byte128Iter<K> {
+	src_iter: K,
+	current: <Block128 as IntoIterator>::IntoIter,
+}
+
+impl<K> Byte128Iter<K> where K: ExactSizeIterator<Item=Block128> {
+	pub fn new(mut src: K) -> Byte128Iter<K> {
+		let curr = src.by_ref().next().unwrap();
+		Byte128Iter::<K> {src_iter: src, current: Block128::into_iter(curr)}
+	}
+}
+
+impl<K> Iterator for Byte128Iter<K> where K: ExactSizeIterator<Item=Block128> {
+	type Item = u8;
+
+	fn next(&mut self) -> Option<Self::Item> {
+//		use std::iter::Iterator;
+		match self.current.next() {
+			e @ Some(_) => e,
+			None => {
+				match self.src_iter.next() {
+					Some(block) => {
+						self.current = Block128::into_iter(block);
+						self.current.next()
+					},
+					None => None,
+				}
+			},
+		}
+	}
+}
+
+impl<K> ExactSizeIterator for Byte128Iter<K> where K: ExactSizeIterator<Item=Block128> {
+	fn len(&self) -> usize {
+		self.src_iter.len() * BYTES_IN_BLOCK
+	}
+}
+//======================================================================================================================
 #[test]
 fn block128_works1() {
 	let init_a: u64 = 0x1D698FDCED742594;
@@ -133,37 +226,5 @@ fn block128_works4() {
 		for b in block {
 			assert_eq!(b, expected.next().unwrap());
 		}
-	}
-}
-
-pub struct Block128Iter<J> {
-	src_iter: J,
-	length: usize,
-	index: usize,
-}
-
-impl<J> Block128Iter<J> where J: ExactSizeIterator<Item=u8> {
-	pub fn new(src: J) -> Block128Iter<J> {
-		let my_len = src.len()/BYTES_IN_BLOCK;
-		Block128Iter::<J> {src_iter: src, length: my_len, index: 0}
-	}
-}
-
-impl<J> Iterator for Block128Iter<J> where J: ExactSizeIterator<Item=u8> {
-	type Item = Block128;
-
-	fn next(&mut self) -> Option<Self::Item> {
-		if self.length > self.index {
-			self.index += 1;
-			Some(self.src_iter.by_ref().collect())
-		} else {
-			None
-		}
-	}
-}
-
-impl<J> ExactSizeIterator for Block128Iter<J> where J: ExactSizeIterator<Item=u8> {
-	fn len(&self) -> usize {
-		self.length
 	}
 }

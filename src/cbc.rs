@@ -1,12 +1,10 @@
 #![allow(unused_parens)]
 
 use speck::Speck;
-use padding::PaddingGenerator;
+use padding::*;
 use block128::*;
 use std::marker::PhantomData;
-use std::iter::ExactSizeIterator;
-
-use util;
+use std::iter::{ExactSizeIterator, FromIterator, Iterator};
 
 pub const BYTES_IN_WORD: usize = 8;
 pub const WORDS_IN_BLOCK: usize = 2;
@@ -15,232 +13,131 @@ pub const BYTES_IN_BLOCK: usize = 16;
 pub enum CipherErrors {WrongPadding, WrongInput}
 
 pub struct CBC <PG> {
-	iv: [u64; 2],
+	iv: Block128,
 	block_cipher: Speck,
 	padd_generator: PhantomData<PG>,
 }
 
-pub struct CBCEncryptIter<'a, 'b> {
+pub struct CBCEncryptIter<'a, IB> {
 	block_cipher: &'a Speck,
-	//TODO: Consider Iterator<u64> to handle padding easier
-	plaintext: &'b [u64],
-	i: usize,
-	prev_1: u64,
-	prev_2: u64,
+	plaintext: IB,
+	prev: Block128
 }
 
-pub struct CBCDecryptIter<'c, 'd> {
+pub struct CBCDecryptIter<'c, JB> {
 	block_cipher: &'c Speck,
-	ciphertext: &'d [u64],
-	i: usize,
-	temp: u64,
-	prev_1: u64,
-	prev_2: u64,
+	ciphertext: JB,
+	prev: Block128
 }
 
-impl<'a, 'b> Iterator for CBCEncryptIter<'a, 'b> {
-	type Item = u64;
+impl<'a, IB> Iterator for CBCEncryptIter<'a, IB> where IB: ExactSizeIterator<Item=Block128> {
+	type Item = Block128;
 
-	fn next(&mut self) -> Option<u64> {
-		//Simple situation - no padding.
-
-		if (self.i % 2 == 1) {
-			self.i += 1;
-			return Some(self.prev_2);
-		}
-		
-		if (self.i < self.plaintext.len()) {
-			let (a, b) = self.block_cipher.speck_encrypt(self.plaintext[self.i] ^ self.prev_1, self.plaintext[self.i+1] ^ self.prev_2);
-			self.prev_1 = a;
-			self.prev_2 = b;
-			self.i += 1;
-			return Some(a);
-		}
-		else {
-			//If plaintext.is_empty() or end of plaintext
-			return None;
+	fn next(&mut self) -> Option<Block128> {
+		let current: Option<Block128> = self.plaintext.next();
+		return match (current) {
+			Some(block) => {
+				let to_encrypt = block ^ self.prev;
+				let encrypted = self.block_cipher.speck_encrypt(&to_encrypt);
+				self.prev = encrypted;
+				return Some(encrypted);
+			},
+			None => None,
 		}
 	}
 }
 
-impl<'c, 'd> Iterator for CBCDecryptIter<'c, 'd> {
-	type Item = u64;
+impl<'a, IB> ExactSizeIterator for CBCEncryptIter<'a, IB> where IB: ExactSizeIterator<Item=Block128> {
+	fn len(&self) -> usize {
+		self.plaintext.len()
+	}
+}
 
-	fn next(&mut self) -> Option<u64> {
-		//TODO: Remove padding
-		
-		if (self.i % 2 == 1) {
-			self.i += 1;
-			return Some(self.temp);
-		}
-		
-		if (self.i < self.ciphertext.len()) {
-			let (a, b) = self.block_cipher.speck_decrypt(self.ciphertext[self.i], self.ciphertext[self.i+1]);
-			self.temp = b ^ self.prev_2;
-			let result = a ^ self.prev_1;
-			self.prev_1 = self.ciphertext[self.i];
-			self.prev_2 = self.ciphertext[self.i+1];
-			self.i += 1;
-			return Some(result);
-		}
-		else {
-			return None;
+impl<'c, JB> Iterator for CBCDecryptIter<'c, JB> where JB: Iterator<Item=Block128>{
+	type Item = Block128;
+
+	fn next(&mut self) -> Option<Block128> {
+		let current: Option<Block128> = self.ciphertext.next();
+		return match (current) {
+			Some(block) => {
+				let almost_decrypted = self.block_cipher.speck_decrypt(&block);
+				let decrypted = almost_decrypted ^ self.prev;
+				self.prev = block;
+				return Some(decrypted);
+			},
+			None => None,
 		}
 	}
 }
 
 impl <PG: PaddingGenerator> CBC <PG> {
-	pub fn new_w(iv: &[u64; WORDS_IN_BLOCK], key: &[u64; WORDS_IN_BLOCK]) -> CBC<PG> {
-		CBC {iv: *iv, block_cipher: Speck::new(key), padd_generator: PhantomData::<PG> }
+	pub fn new_w(iv: Block128, key: &Block128) -> CBC<PG> {
+		CBC {iv: iv, block_cipher: Speck::new(key), padd_generator: PhantomData::<PG> }
 	}
-	
+
 	pub fn new_b(iv: &[u8; BYTES_IN_BLOCK], key: &[u8; BYTES_IN_BLOCK]) -> CBC<PG> {
-		let iv2  = util::bytes_to_words(iv);
-		let key2 = util::bytes_to_words(key);
-		let iv3  = [iv2[0].to_be(), iv2[1].to_be()];
-		let key3 = [key2[0].to_be(), key2[1].to_be()];
-		CBC {iv: iv3, block_cipher: Speck::new(&key3), padd_generator: PhantomData::<PG> }
+		CBC {iv: Block128::from_iter(iv.iter().cloned()), block_cipher: Speck::new(&Block128::from_iter(key.iter().cloned())), padd_generator: PhantomData::<PG> }
 	}
 
-	pub fn encrypt_blocks<'a>(&'a self, plaintext: &'a [u64]) -> CBCEncryptIter {
-		assert!(plaintext.len() % WORDS_IN_BLOCK == 0, "Input buffer has odd length {0}!", plaintext.len());
+	pub fn encrypt_blocks<'a, IB>(&'a self, plaintext: IB) -> CBCEncryptIter<IB> where IB: Iterator<Item=Block128> {
+		CBCEncryptIter{block_cipher: &self.block_cipher, plaintext: plaintext, prev: self.iv}
+	}
+
+	pub fn decrypt_blocks<'c, JB>(&'c self, ciphertext: JB) -> CBCDecryptIter<JB> where JB: Iterator<Item=Block128> {
+		CBCDecryptIter{block_cipher: &self.block_cipher, ciphertext: ciphertext, prev: self.iv}
+	}
+
+	pub fn encrypt_bytes<'b, KB>(&'b self, plaintext: KB) -> Byte128Iter<CBCEncryptIter<Block128Iter<MyChain<KB, <PG as PaddingGenerator>::PaddingIterator>>>> where
+	KB: ExactSizeIterator<Item=u8>,
+	{
+		let padded_plaintext = PG::set_padding(plaintext, BYTES_IN_BLOCK);
+		let block_iter = Block128::to_block_iter(padded_plaintext);
+		let enc_blocks: CBCEncryptIter<Block128Iter<MyChain<KB, <PG as PaddingGenerator>::PaddingIterator>>> = self.encrypt_blocks(block_iter);
+		let enc_bytes = Block128::to_byte_iter(enc_blocks);
 		
-		//TODO: Remove assert and generate padding here
-		CBCEncryptIter{block_cipher: &self.block_cipher, plaintext: plaintext, i: 0, prev_1: self.iv[0], prev_2: self.iv[1]}
+		enc_bytes
 	}
-
-	pub fn decrypt_blocks<'c>(&'c self, ciphertext: &'c [u64]) -> CBCDecryptIter {
-		assert!(ciphertext.len() % WORDS_IN_BLOCK == 0, "Input buffer has odd length {0}!", ciphertext.len());
-		
-		//TODO: Remove assert as soon as introduce Block instead of u64
-		CBCDecryptIter{block_cipher: &self.block_cipher, ciphertext: ciphertext, i: 0, temp: 0, prev_1: self.iv[0], prev_2: self.iv[1]}
+/*
+	pub fn decrypt_bytes<'d, LB>(&'d self, ciphertext: LB) -> CBCDecryptIter<LB> where LB: Iterator<Item=u8> {
+		let decrypted_blocks = CBCDecryptIter{block_cipher: &self.block_cipher, ciphertext: ciphertext, prev: self.iv}
 	}
-
-	//#[deprecated]
-	pub fn cbc_encrypt_blocks(&self, plaintext: &[u64]) -> Vec<u64> {
-		assert!(!plaintext.is_empty(), "Input plaintext should not be empty!");
-		assert!(plaintext.len() % WORDS_IN_BLOCK == 0, "Input buffer has odd length {0}!", plaintext.len());
-
-		let mut ciphertext: Vec<u64> = Vec::with_capacity(plaintext.len()/BYTES_IN_WORD+2);
-
-		let (a, b) = self.block_cipher.speck_encrypt(plaintext[0] ^ self.iv[0], plaintext[1] ^ self.iv[1]);
-		ciphertext.push(a);
-		ciphertext.push(b);
-
-//		TODO: Better way, but non-working right now
-//		for i in (2..plaintext.len()).step_by(2) {
-		for i in (2 .. plaintext.len()).filter(|x| x % 2 == 0) {
-			let (c, d) = self.block_cipher.speck_encrypt(plaintext[i] ^ ciphertext[i-2], plaintext[i+1] ^ ciphertext[i-1]);
-			ciphertext.push(c);
-			ciphertext.push(d);
-		}
-
-		ciphertext
-	}
-
-	//#[deprecated]
-	pub fn cbc_decrypt_blocks(&self, ciphertext: &[u64]) -> Vec<u64> {
-		assert!(!ciphertext.is_empty(), "Input ciphertext should not be empty!");
-		assert!(ciphertext.len() % WORDS_IN_BLOCK == 0, "Input buffer has odd length {0}!", ciphertext.len());
-
-		let mut decryptedtext: Vec<u64> = Vec::with_capacity(ciphertext.len()/BYTES_IN_WORD+2);
-
-		let (a, b) = self.block_cipher.speck_decrypt(ciphertext[0], ciphertext[1]);
-		decryptedtext.push(a ^ self.iv[0]);
-		decryptedtext.push(b ^ self.iv[1]);
-
-//		TODO: Use step_by in future
-		for i in (2 .. ciphertext.len()).filter(|x| x % 2 == 0) {
-			let (c, d) = self.block_cipher.speck_decrypt(ciphertext[i], ciphertext[i+1]);
-			decryptedtext.push(c ^ ciphertext[i-2]);
-			decryptedtext.push(d ^ ciphertext[i-1]);
-		}
-
-		decryptedtext
-	}
-
-	pub fn cbc_encrypt_byte_array(&self, plaintext: &[u8]) -> Result<Vec<u8>, CipherErrors> {
-		if (plaintext.is_empty()) { return Err(CipherErrors::WrongInput) };
-
-		let padded_plaintext_iter = PG::set_padding(plaintext.iter().cloned(), BYTES_IN_BLOCK);
-
-		let mut ciphertext: Vec<u8> = Vec::with_capacity(padded_plaintext_iter.len());
-
-		let mut padded_plaintext_blocks_iter = Block128::to_block_iter(padded_plaintext_iter);
-
-		//Plaintext is padded, so there is at leas 1 block. Unwrap with no worries.
-		let first_block = padded_plaintext_blocks_iter.next().unwrap();
-		let (mut a, mut b) = self.block_cipher.speck_encrypt(first_block.get_a() ^ self.iv[0], first_block.get_b() ^ self.iv[1]);
-		ciphertext.extend_from_slice(util::words_to_bytes(&[a, b]));
-
-		for current_block in padded_plaintext_blocks_iter {
-			let t1 = current_block.get_a();
-			let t2 = current_block.get_b();
-			let (c, d) = self.block_cipher.speck_encrypt(t1 ^ a, t2 ^ b);
-			ciphertext.extend_from_slice(util::words_to_bytes(&[c, d]));
-			a = c;
-			b = d;
-		}
-
-		Ok(ciphertext)
-	}
-
-	pub fn cbc_decrypt_byte_array(&self, ciphertext: &[u8]) -> Result<Vec<u8>, CipherErrors> {
-		if (ciphertext.is_empty() || ciphertext.len() % BYTES_IN_BLOCK != 0) { return Err(CipherErrors::WrongInput) };
-
-		let ciphertext_u64: &[u64] = util::bytes_to_words(&ciphertext/*, BYTES_IN_WORD*/);
-
-		let mut decrypted: Vec<u8> = Vec::with_capacity(ciphertext.len());
-
-		let (mut a, mut b) = self.block_cipher.speck_decrypt(ciphertext_u64[0].to_be(), ciphertext_u64[1].to_be());
-		decrypted.extend_from_slice(util::words_to_bytes(&[a^self.iv[0], b^self.iv[1]]));
-
-		for i in (2 .. ciphertext_u64.len()).filter(|x| x % 2 == 0) {
-			let (c, d) = self.block_cipher.speck_decrypt(ciphertext_u64[i].to_be(), ciphertext_u64[i+1].to_be() ^ b);
-			decrypted.extend_from_slice(util::words_to_bytes(&[c^a, d^b]));
-			a = c;
-			b = d;
-		}
-
-		/*match self.padd_generator::remove_padding(&decrypted, BYTES_IN_BLOCK) {
-			Err(_)        => Err(CipherErrors::WrongPadding),
-			Ok(plaintext_len) => {
-				while (decrypted.len() > plaintext_len) {
-					decrypted.pop();
-				}
-				Ok(decrypted)
-			},
-		}*/
-		Err(CipherErrors::WrongPadding)
-	}
+*/
 }
-
-
 
 
 #[test]
 fn cbc_works1() {
 	use pkcs7::PKCS7;
-	let plaintext     = [0x7469206564616d20, 0x6c61766975716520];
-	let key: [u64; 2] = [0x0706050403020100, 0x0f0e0d0c0b0a0908];
-	let iv1: [u64; 2] = [0xAFF92B19D2240A90, 0xDD55C781B2E48BB0];
+	let plaintext1 = [0x74, 0x69, 0x20, 0x65, 0x64, 0x61, 0x6d, 0x20, 0x6c, 0x61, 0x76, 0x69, 0x75, 0x71, 0x65, 0x20];
+	let plaintext2 = Block128::new(0x7469206564616d20, 0x6c61766975716520);
+	let key = Block128::new(0x0706050403020100, 0x0f0e0d0c0b0a0908);
+	let iv1 = Block128::new(0xAFF92B19D2240A90, 0xDD55C781B2E48BB0);
 
+	let c: CBC<PKCS7> = CBC::new_w(iv1, &key);
 	let s: Speck = Speck::new(&key);
-	let c: CBC<PKCS7> = CBC::new_w(&iv1, &key);
 
-	let ciphertext1: Vec<u64> = c.cbc_encrypt_blocks(&plaintext);
-	let (ct1, ct2) = s.speck_encrypt(iv1[0] ^ plaintext[0], iv1[1] ^ plaintext[1]);
-	assert_eq!(ciphertext1, [ct1, ct2].to_vec());
+	let mut ciphertext1 = c.encrypt_bytes(plaintext1.into_iter().cloned());
+	let mut ciphertext2 = c.encrypt_blocks(::std::iter::once(plaintext2)).next().unwrap().into_iter();
+	let mut ciphertext3 = s.speck_encrypt(&(iv1 ^ plaintext2)).into_iter();
 
-	let decryptedtext1: Vec<u64> = c.cbc_decrypt_blocks(&ciphertext1);
-	assert_eq!(decryptedtext1, plaintext);
+	for _ in 0..BYTES_IN_BLOCK {
+		let x = ciphertext1.next().unwrap();
+		let y = ciphertext2.next().unwrap();
+		let z = ciphertext3.next().unwrap();
+		assert_eq!(x, y);
+		assert_eq!(y, z);
+	}
 }
 
+/*
 #[test]
-fn cbc_works2() {
+fn cbc_works3() {
 	use ansi_x923::ANSI_X923;
 
-	let long_plaintext = [0xB6ECC96CEC3EE647, 0x0D698FDCED742594, 0x78BCB34D52D1B961, 0xA03EF56F828A60DE, 0xE725480B83C30B2C, 0xE57669757165C2BA];
+	let long_plaintext_src   = [0xB6, 0xEC, 0xC9, 0x6C, 0xEC, 0x3E, 0xE6, 0x47, 0x0D, 0x69, 0x8F, 0xDC, 0xED, 0x74, 0x25, 0x94,
+								0x78, 0xBC, 0xB3, 0x4D, 0x52, 0xD1, 0xB9, 0x61, 0xA0, 0x3E, 0xF5, 0x6F, 0x82, 0x8A, 0x60, 0xDE,
+								0xE7, 0x25, 0x48, 0x0B, 0x83, 0xC3, 0x0B, 0x2C, 0xE5, 0x76, 0x69, 0x75, 0x71, 0x65, 0xC2, 0xBA];
+	let long_plaintext = long_plaintext_src
 	let key: [u64; 2]  = [0x0706050403020100, 0x0f0e0d0c0b0a0908];
 	let iv2: [u64; 2]  = [0xD2C4B7D96C49160E, 0x4EFE0C3E3B9FFD85];
 
@@ -254,4 +151,4 @@ fn cbc_works2() {
 	let decryptedtext3: Vec<u64> = c.decrypt_blocks(&ciphertext2).collect();
 	assert_eq!(ciphertext2, ciphertext3);
 	assert_eq!(decryptedtext2, decryptedtext3);
-}
+}*/

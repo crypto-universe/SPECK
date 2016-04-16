@@ -1,5 +1,7 @@
 //   128/128
 
+use block128::Block128;
+
 const ALPHA:   u32 = 8;
 const BETA:    u32 = 3;
 
@@ -12,7 +14,8 @@ pub struct Speck {
 }
 
 impl Speck {
-	pub fn new(key: &[u64; WORDS_IN_KEY]) -> Speck{
+	pub fn new(key_b: &Block128) -> Speck{
+		let key = [key_b.get_a(), key_b.get_b()];
 		let mut key_temp: [u64; ROUNDS] = [0; ROUNDS];
 		Speck::key_schedule(&key, &mut key_temp);
 		Speck {keys_propagated: key_temp}
@@ -28,22 +31,26 @@ impl Speck {
 		}
 	}
 
-	pub fn speck_encrypt(&self, mut plaintext1: u64, mut plaintext2: u64) -> (u64, u64) {
+	pub fn speck_encrypt(&self, pt: &Block128) -> Block128 {
+		let mut plaintext1 = pt.get_a();
+		let mut plaintext2 = pt.get_b();
 
 		for curr_key in &self.keys_propagated {
 			speck_round_forward(&mut plaintext2, &mut plaintext1, curr_key);
 		}
 
-		(plaintext1, plaintext2)
+		Block128::new(plaintext1, plaintext2)
 	}
 
-	pub fn speck_decrypt(&self, mut ciphertext1: u64, mut ciphertext2: u64) -> (u64, u64) {
-
+	pub fn speck_decrypt(&self, ct: &Block128) -> Block128 {
+		let mut ciphertext1 = ct.get_a();
+		let mut ciphertext2 = ct.get_b();
+		
 		for curr_key in self.keys_propagated.into_iter().rev() {
 			speck_round_backward(&mut ciphertext2, &mut ciphertext1, curr_key);
 		}
 
-		(ciphertext1, ciphertext2)
+		Block128::new(ciphertext1, ciphertext2)
 	}
 }
 
@@ -73,15 +80,15 @@ fn ror(num: u64, amount: u8) -> u64 {
 
 #[test]
 fn basic_works1() {
-	let plain_text: [u64; 2] = [0x7469206564616d20, 0x6c61766975716520];
-	let key: [u64; 2] = [0x0706050403020100, 0x0f0e0d0c0b0a0908];
-	let expected_ciphertext = [0x7860fedf5c570d18, 0xa65d985179783265];
+	let plain_text: Block128 = Block128::new(0x7469206564616d20, 0x6c61766975716520);
+	let key: Block128 = Block128::new(0x0706050403020100, 0x0f0e0d0c0b0a0908);
+	let expected_ciphertext = Block128::new(0x7860fedf5c570d18, 0xa65d985179783265);
 
 	let s: Speck = Speck::new(&key);
 
-	let (cypher_a, cypher_b) = s.speck_encrypt(plain_text[0], plain_text[1]);
-	assert_eq!([cypher_a, cypher_b], expected_ciphertext);
+	let cipher = s.speck_encrypt(&plain_text);
+	assert_eq!(cipher, expected_ciphertext);
 
-	let (decr_a, decr_b) = s.speck_decrypt(cypher_a, cypher_b);
-	assert_eq!([decr_a, decr_b], plain_text);
+	let decr = s.speck_decrypt(&cipher);
+	assert_eq!(decr, plain_text);
 }
