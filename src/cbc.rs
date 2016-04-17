@@ -4,33 +4,27 @@ use speck::Speck;
 use padding::*;
 use block128::*;
 use std::marker::PhantomData;
-use std::iter::{ExactSizeIterator, FromIterator, Iterator};
+use std::iter::{ExactSizeIterator, Iterator};
 
-pub const BYTES_IN_WORD: usize = 8;
-pub const WORDS_IN_BLOCK: usize = 2;
 pub const BYTES_IN_BLOCK: usize = 16;
 
-pub enum CipherErrors {WrongPadding, WrongInput}
-
 pub struct CBC <PG> {
-	iv: Block128,
-	block_cipher: Speck,
 	padd_generator: PhantomData<PG>,
 }
 
-pub struct CBCEncryptIter<'a, IB> {
-	block_cipher: &'a Speck,
+pub struct CBCEncryptIter<IB> {
+	block_cipher: Speck,
 	plaintext: IB,
 	prev: Block128
 }
 
-pub struct CBCDecryptIter<'c, JB> {
-	block_cipher: &'c Speck,
+pub struct CBCDecryptIter<JB> {
+	block_cipher: Speck,
 	ciphertext: JB,
 	prev: Block128
 }
 
-impl<'a, IB> Iterator for CBCEncryptIter<'a, IB> where IB: ExactSizeIterator<Item=Block128> {
+impl<IB> Iterator for CBCEncryptIter<IB> where IB: ExactSizeIterator<Item=Block128> {
 	type Item = Block128;
 
 	fn next(&mut self) -> Option<Block128> {
@@ -47,13 +41,13 @@ impl<'a, IB> Iterator for CBCEncryptIter<'a, IB> where IB: ExactSizeIterator<Ite
 	}
 }
 
-impl<'a, IB> ExactSizeIterator for CBCEncryptIter<'a, IB> where IB: ExactSizeIterator<Item=Block128> {
+impl<IB> ExactSizeIterator for CBCEncryptIter<IB> where IB: ExactSizeIterator<Item=Block128> {
 	fn len(&self) -> usize {
 		self.plaintext.len()
 	}
 }
 
-impl<'c, JB> Iterator for CBCDecryptIter<'c, JB> where JB: Iterator<Item=Block128>{
+impl<JB> Iterator for CBCDecryptIter<JB> where JB: ExactSizeIterator<Item=Block128>{
 	type Item = Block128;
 
 	fn next(&mut self) -> Option<Block128> {
@@ -70,38 +64,45 @@ impl<'c, JB> Iterator for CBCDecryptIter<'c, JB> where JB: Iterator<Item=Block12
 	}
 }
 
+impl<JB> ExactSizeIterator for CBCDecryptIter<JB> where JB: ExactSizeIterator<Item=Block128> {
+	fn len(&self) -> usize {
+		self.ciphertext.len()
+	}
+}
+
 impl <PG: PaddingGenerator> CBC <PG> {
-	pub fn new_w(iv: Block128, key: &Block128) -> CBC<PG> {
-		CBC {iv: iv, block_cipher: Speck::new(key), padd_generator: PhantomData::<PG> }
+	pub fn new() -> CBC<PG> {
+		CBC {padd_generator: PhantomData::<PG> }
 	}
 
-	pub fn new_b(iv: &[u8; BYTES_IN_BLOCK], key: &[u8; BYTES_IN_BLOCK]) -> CBC<PG> {
-		CBC {iv: Block128::from_iter(iv.iter().cloned()), block_cipher: Speck::new(&Block128::from_iter(key.iter().cloned())), padd_generator: PhantomData::<PG> }
+	pub fn encrypt_blocks<IB>(&self, iv: Block128, key: Block128, plaintext: IB) -> CBCEncryptIter<IB> where IB: Iterator<Item=Block128> {
+		CBCEncryptIter{block_cipher: Speck::new(&key), plaintext: plaintext, prev: iv}
 	}
 
-	pub fn encrypt_blocks<'a, IB>(&'a self, plaintext: IB) -> CBCEncryptIter<IB> where IB: Iterator<Item=Block128> {
-		CBCEncryptIter{block_cipher: &self.block_cipher, plaintext: plaintext, prev: self.iv}
+	pub fn decrypt_blocks<JB>(&self, iv: Block128, key: Block128, ciphertext: JB) -> CBCDecryptIter<JB> where JB: Iterator<Item=Block128> {
+		CBCDecryptIter{block_cipher: Speck::new(&key), ciphertext: ciphertext, prev: iv}
 	}
 
-	pub fn decrypt_blocks<'c, JB>(&'c self, ciphertext: JB) -> CBCDecryptIter<JB> where JB: Iterator<Item=Block128> {
-		CBCDecryptIter{block_cipher: &self.block_cipher, ciphertext: ciphertext, prev: self.iv}
-	}
-
-	pub fn encrypt_bytes<'b, KB>(&'b self, plaintext: KB) -> Byte128Iter<CBCEncryptIter<Block128Iter<MyChain<KB, <PG as PaddingGenerator>::PaddingIterator>>>> where
+	pub fn encrypt_bytes<KB>(&self, iv: Block128, key: Block128, plaintext: KB) -> Byte128Iter<CBCEncryptIter<Block128Iter<MyChain<KB, <PG as PaddingGenerator>::PaddingIterator>>>> where
 	KB: ExactSizeIterator<Item=u8>,
 	{
 		let padded_plaintext = PG::set_padding(plaintext, BYTES_IN_BLOCK);
 		let block_iter = Block128::to_block_iter(padded_plaintext);
-		let enc_blocks: CBCEncryptIter<Block128Iter<MyChain<KB, <PG as PaddingGenerator>::PaddingIterator>>> = self.encrypt_blocks(block_iter);
+		let enc_blocks: CBCEncryptIter<Block128Iter<MyChain<KB, <PG as PaddingGenerator>::PaddingIterator>>> = self.encrypt_blocks(iv, key, block_iter);
 		let enc_bytes = Block128::to_byte_iter(enc_blocks);
 		
 		enc_bytes
 	}
 /*
-	pub fn decrypt_bytes<'d, LB>(&'d self, ciphertext: LB) -> CBCDecryptIter<LB> where LB: Iterator<Item=u8> {
-		let decrypted_blocks = CBCDecryptIter{block_cipher: &self.block_cipher, ciphertext: ciphertext, prev: self.iv}
-	}
-*/
+	pub fn decrypt_bytes<LB>(&self, ciphertext: LB) -> Result<Byte128Iter<CBCDecryptIter<Block128Iter<LB>>>, String> where LB: ExactSizeIterator<Item=u8> {
+		let encrypted_blocks = Block128::to_block_iter(ciphertext);
+		let decrypted_blocks = self.decrypt_blocks(encrypted_blocks);
+		let decrypted_bytes = Block128::to_byte_iter(decrypted_blocks);
+		match (PG::remove_padding(decrypted_bytes, BYTES_IN_BLOCK)) {
+			Ok(result) => Ok(result),
+			Err(e) => Err("Decryption failed.".to_owned()),		//No leak of error details info
+		}
+	}*/
 }
 
 
@@ -113,11 +114,11 @@ fn cbc_works1() {
 	let key = Block128::new(0x0706050403020100, 0x0f0e0d0c0b0a0908);
 	let iv1 = Block128::new(0xAFF92B19D2240A90, 0xDD55C781B2E48BB0);
 
-	let c: CBC<PKCS7> = CBC::new_w(iv1, &key);
+	let c: CBC<PKCS7> = CBC::new();
 	let s: Speck = Speck::new(&key);
 
-	let mut ciphertext1 = c.encrypt_bytes(plaintext1.into_iter().cloned());
-	let mut ciphertext2 = c.encrypt_blocks(::std::iter::once(plaintext2)).next().unwrap().into_iter();
+	let mut ciphertext1 = c.encrypt_bytes(iv1, key, plaintext1.into_iter().cloned());
+	let mut ciphertext2 = c.encrypt_blocks(iv1, key, ::std::iter::once(plaintext2)).next().unwrap().into_iter();
 	let mut ciphertext3 = s.speck_encrypt(&(iv1 ^ plaintext2)).into_iter();
 
 	for _ in 0..BYTES_IN_BLOCK {
