@@ -126,8 +126,8 @@ impl<J> DoubleEndedIterator for Block128Iter<J> where J: DoubleEndedIterator<Ite
 		if self.index > 0 {
 			self.index -= 1;
 			let mut b: [u8; BYTES_IN_BLOCK] = [0; BYTES_IN_BLOCK];
-			for i in BYTES_IN_BLOCK..0 {
-				b[i-1] = self.src_iter.next_back().unwrap();
+			for i in (0..BYTES_IN_BLOCK).rev() {
+				b[i] = self.src_iter.next_back().unwrap();
 			}
 			Some(Block128::from_iter(b.into_iter().cloned()))
 		} else {
