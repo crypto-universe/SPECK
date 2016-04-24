@@ -91,7 +91,7 @@ impl FromIterator<u8> for Block128 {
 			b = b.shl(8);
 			b = b.bitxor(iter.next().unwrap() as u64)
 		}
-		
+
 		Block128::new(a, b)
 	}
 }
@@ -108,13 +108,28 @@ impl<J> Block128Iter<J> where J: ExactSizeIterator<Item=u8> {
 	}
 }
 
-impl<J> Iterator for Block128Iter<J> where J: ExactSizeIterator<Item=u8> {
+impl<J> Iterator for Block128Iter<J> where J: Iterator<Item=u8> {
 	type Item = Block128;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.index > 0 {
 			self.index -= 1;
 			Some(self.src_iter.by_ref().collect())
+		} else {
+			None
+		}
+	}
+}
+
+impl<J> DoubleEndedIterator for Block128Iter<J> where J: DoubleEndedIterator<Item=u8> {
+	fn next_back(&mut self) -> Option<Self::Item> {
+		if self.index > 0 {
+			self.index -= 1;
+			let mut b: [u8; BYTES_IN_BLOCK] = [0; BYTES_IN_BLOCK];
+			for i in BYTES_IN_BLOCK..0 {
+				b[i-1] = self.src_iter.next_back().unwrap();
+			}
+			Some(Block128::from_iter(b.into_iter().cloned()))
 		} else {
 			None
 		}
@@ -143,7 +158,6 @@ impl<K> Iterator for Byte128Iter<K> where K: ExactSizeIterator<Item=Block128> {
 	type Item = u8;
 
 	fn next(&mut self) -> Option<Self::Item> {
-//		use std::iter::Iterator;
 		match self.current.next() {
 			e @ Some(_) => e,
 			None => {

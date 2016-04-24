@@ -90,7 +90,7 @@ impl <PG: PaddingGenerator> CBC <PG> {
 		let block_iter = Block128::to_block_iter(padded_plaintext);
 		let enc_blocks: CBCEncryptIter<Block128Iter<MyChain<KB, <PG as PaddingGenerator>::PaddingIterator>>> = self.encrypt_blocks(iv, key, block_iter);
 		let enc_bytes = Block128::to_byte_iter(enc_blocks);
-		
+
 		enc_bytes
 	}
 /*
