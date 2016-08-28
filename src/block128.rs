@@ -19,8 +19,9 @@ impl Block128 {
 		Block128Iter::new(source)
 	}
 
-	pub fn to_byte_iter<J: ExactSizeIterator<Item=Block128>>(source: J) -> Byte128Iter<J> {
-		Byte128Iter::new(source)	//like FlatMap
+	pub fn to_byte_iter<J>(source: J) -> impl Iterator<Item=u8> + DoubleEndedIterator<Item=u8> + ExactSizeIterator<Item=u8>
+	where J: ExactSizeIterator<Item=Block128> + DoubleEndedIterator<Item=Block128> {
+		Byte128Iter::new(source.flat_map(|s| s), source.len() * BYTES_IN_BLOCK)	//like FlatMap, but with known size
 	}
 
 	pub fn get_a(&self) -> u64 {
@@ -142,42 +143,38 @@ impl<J> ExactSizeIterator for Block128Iter<J> where J: ExactSizeIterator<Item=u8
 	}
 }
 //======================================================================================================================
-pub struct Byte128Iter<K> {
-	src_iter: K,
-	current: <Block128 as IntoIterator>::IntoIter,
+
+pub struct Byte128Iter<FM> {
+	src_iter: FM,//FlatMap<DoubleEndedIterator<Item=Block128>, Block128, FnMut(Block128)->u8>,
+	size: usize,
 }
 
-impl<K> Byte128Iter<K> where K: ExactSizeIterator<Item=Block128> {
-	pub fn new(mut src: K) -> Byte128Iter<K> {
-		let curr = src.by_ref().next().unwrap();
-		Byte128Iter::<K> {src_iter: src, current: Block128::into_iter(curr)}
+impl<K> Byte128Iter<K> where K: DoubleEndedIterator<Item=u8> {
+	pub fn new(src: K, s: usize) -> Byte128Iter<K> {
+		Byte128Iter::<K> {src_iter: src, size: s}
 	}
 }
 
-impl<K> Iterator for Byte128Iter<K> where K: ExactSizeIterator<Item=Block128> {
+impl<K> Iterator for Byte128Iter<K> where K: DoubleEndedIterator<Item=u8> {
 	type Item = u8;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		match self.current.next() {
-			e @ Some(_) => e,
-			None => {
-				match self.src_iter.next() {
-					Some(block) => {
-						self.current = Block128::into_iter(block);
-						self.current.next()
-					},
-					None => None,
-				}
-			},
-		}
+		self.src_iter.next()
 	}
 }
 
-impl<K> ExactSizeIterator for Byte128Iter<K> where K: ExactSizeIterator<Item=Block128> {
-	fn len(&self) -> usize {
-		self.src_iter.len() * BYTES_IN_BLOCK
+impl<K> DoubleEndedIterator for Byte128Iter<K> where K: DoubleEndedIterator<Item=u8> {
+	fn next_back(&mut self) -> Option<Self::Item> {
+		self.src_iter.next_back()
 	}
 }
+
+impl<K> ExactSizeIterator for Byte128Iter<K> where K: DoubleEndedIterator<Item=u8> {
+	fn len(&self) -> usize {
+		self.size
+	}
+}
+
 //======================================================================================================================
 #[test]
 fn block128_works1() {

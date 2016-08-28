@@ -1,4 +1,3 @@
-#![allow(unused_parens)]
 #![allow(non_camel_case_types)]
 
 use padding::*;

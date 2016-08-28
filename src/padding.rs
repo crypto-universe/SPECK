@@ -1,5 +1,3 @@
-#![allow(unused_parens)]
-
 #[derive(Debug)]
 //ALARM! Prevent this info to leak! Otherwise system will be vulnerable to padding oracle attack!
 pub enum PaddingError {WrongPadding, WrongCiphertextLength/*, WrongBlockLength*/}

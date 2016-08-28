@@ -1,5 +1,3 @@
-#![allow(unused_parens)]
-
 use speck::Speck;
 use padding::*;
 use block128::*;
@@ -83,8 +81,8 @@ impl <PG: PaddingGenerator> CBC <PG> {
 		CBCDecryptIter{block_cipher: Speck::new(&key), ciphertext: ciphertext, prev: iv}
 	}
 
-	pub fn encrypt_bytes<KB>(&self, iv: Block128, key: Block128, plaintext: KB) -> Byte128Iter<CBCEncryptIter<Block128Iter<MyChain<KB, <PG as PaddingGenerator>::PaddingIterator>>>> where
-	KB: ExactSizeIterator<Item=u8>,
+//Byte128Iter<CBCEncryptIter<Block128Iter<MyChain<KB, <PG as PaddingGenerator>::PaddingIterator>>>>
+	pub fn encrypt_bytes<KB>(&self, iv: Block128, key: Block128, plaintext: KB) -> impl Iterator<Item=u8> where KB: ExactSizeIterator<Item=u8>,
 	{
 		let padded_plaintext = PG::set_padding(plaintext, BYTES_IN_BLOCK);
 		let block_iter = Block128::to_block_iter(padded_plaintext);
@@ -93,16 +91,17 @@ impl <PG: PaddingGenerator> CBC <PG> {
 
 		enc_bytes
 	}
-/*
-	pub fn decrypt_bytes<LB>(&self, ciphertext: LB) -> Result<Byte128Iter<CBCDecryptIter<Block128Iter<LB>>>, String> where LB: ExactSizeIterator<Item=u8> {
+
+	pub fn decrypt_bytes<LB>(&self, iv: Block128, key: Block128, ciphertext: LB) -> Result<(impl Iterator<Item=u8> + ExactSizeIterator<Item=u8>), String> 
+	where LB: ExactSizeIterator<Item=u8> {
 		let encrypted_blocks = Block128::to_block_iter(ciphertext);
-		let decrypted_blocks = self.decrypt_blocks(encrypted_blocks);
+		let decrypted_blocks = self.decrypt_blocks(iv, key, encrypted_blocks);
 		let decrypted_bytes = Block128::to_byte_iter(decrypted_blocks);
 		match (PG::remove_padding(decrypted_bytes, BYTES_IN_BLOCK)) {
 			Ok(result) => Ok(result),
 			Err(e) => Err("Decryption failed.".to_owned()),		//No leak of error details info
 		}
-	}*/
+	}
 }
 
 

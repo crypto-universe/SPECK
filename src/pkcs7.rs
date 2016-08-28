@@ -1,5 +1,3 @@
-#![allow(unused_parens)]
-
 use padding::*;
 use std::iter::{Repeat, Take};
 

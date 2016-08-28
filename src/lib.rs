@@ -1,3 +1,6 @@
+#![feature(conservative_impl_trait)]
+#![allow(unused_parens)]
+
 pub mod block128;
 pub mod padding;
 pub mod pkcs7;
