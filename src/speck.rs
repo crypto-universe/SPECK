@@ -11,6 +11,7 @@ pub struct Speck {
 	keys_propagated: [u64; ROUNDS]
 }
 
+//TODO: Use Block128 type with u128 (unstable now) inside
 impl Speck {
 	pub fn new(key: &[u64; WORDS_IN_KEY]) -> Speck{
 		let mut key_temp: [u64; ROUNDS] = [0; ROUNDS];
@@ -18,14 +19,13 @@ impl Speck {
 		Speck {keys_propagated: key_temp}
 	}
 
-	//TODO: Make loop pretty
 	fn key_schedule(key: &[u64; WORDS_IN_KEY], propagated: &mut [u64; ROUNDS]) {
 		let mut y1: u64 = key[1];
 		let mut y2: u64 = key[0];
 		propagated[0] = key[0];
-		for i in 1..ROUNDS {
+		for (i, item) in &mut propagated.into_iter().enumerate().skip(1) {
 			speck_round_forward(&mut y1, &mut y2, &((i-1) as u64));
-			propagated[i] = y2;
+			(*item) = y2;
 		}
 	}
 
@@ -48,28 +48,16 @@ impl Speck {
 	}
 }
 
-#[inline(always)]
+#[inline]
 fn speck_round_forward(x1: &mut u64, x2: &mut u64, key: &u64) {
 	*x1 = ((x1.rotate_right(ALPHA)).wrapping_add(*x2)) ^ key;
 	*x2 = x2.rotate_left(BETA) ^ (*x1);
 }
 
-#[inline(always)]
+#[inline]
 fn speck_round_backward(x1: &mut u64, x2: &mut u64, key: &u64) {
 	*x2 = (*x2 ^ *x1).rotate_right(BETA);
 	*x1 = ((*x1 ^ key).wrapping_sub(*x2)).rotate_left(ALPHA);
-}
-
-#[allow(dead_code)]
-#[inline(always)]
-fn rol(num: u64, amount: u8) -> u64 {
-	(num << amount) | (num >> (64-amount))
-}
-
-#[allow(dead_code)]
-#[inline(always)]
-fn ror(num: u64, amount: u8) -> u64 {
-	(num >> amount) | (num << (64-amount))
 }
 
 #[test]
