@@ -116,8 +116,8 @@ fn cbc_works1() {
 	let c: CBC<PKCS7> = CBC::new();
 	let s: Speck = Speck::new(&key);
 
-	let mut ciphertext1 = c.encrypt_bytes(iv1, key, plaintext1.into_iter().cloned());
-	let mut ciphertext2 = c.encrypt_blocks(iv1, key, ::std::iter::once(plaintext2)).next().unwrap().into_iter();
+	let mut ciphertext1 = c.encrypt_bytes(iv1, key, plaintext1.iter());
+	let mut ciphertext2 = c.encrypt_blocks(iv1, key, ::std::iter::once(plaintext2)).next().unwrap().iter();
 	let mut ciphertext3 = s.speck_encrypt(&(iv1 ^ plaintext2)).into_iter();
 
 	for _ in 0..BYTES_IN_BLOCK {
