@@ -1,28 +1,25 @@
-//   128/128
+use block128::Block128;
 
-const ALPHA:   u32 = 8;
-const BETA:    u32 = 3;
+const ALPHA:  u32   = 8;
+const BETA:   u32   = 3;
+const ROUNDS: usize = 32;
 
-pub const WORDS_IN_KEY: usize   = 2;
-pub const BYTES_IN_KEY: usize   = 16;
-pub const ROUNDS:  usize   = 32;
-
-pub struct Speck {
+#[allow(non_camel_case_types)]
+pub struct Speck_128_128 {
 	keys_propagated: [u64; ROUNDS]
 }
 
-//TODO: Use Block128 type with u128 (unstable now) inside
-impl Speck {
-	pub fn new(key: &[u64; WORDS_IN_KEY]) -> Speck{
+impl Speck_128_128 {
+	pub fn new<U: Into<Block128>>(key: U) -> Speck_128_128 {
 		let mut key_temp: [u64; ROUNDS] = [0; ROUNDS];
-		Speck::key_schedule(&key, &mut key_temp);
-		Speck {keys_propagated: key_temp}
+		Speck_128_128::key_schedule(&key.into(), &mut key_temp);
+		Speck_128_128 {keys_propagated: key_temp}
 	}
 
-	fn key_schedule(key: &[u64; WORDS_IN_KEY], propagated: &mut [u64; ROUNDS]) {
-		let mut y1: u64 = key[1];
-		let mut y2: u64 = key[0];
-		propagated[0] = key[0];
+	fn key_schedule(key: &Block128, propagated: &mut [u64; ROUNDS]) {
+		let mut y1: u64 = key.get_b();
+		let mut y2: u64 = key.get_a();
+		propagated[0] = key.get_a();
 		for (i, item) in &mut propagated.into_iter().enumerate().skip(1) {
 			speck_round_forward(&mut y1, &mut y2, &((i-1) as u64));
 			(*item) = y2;
@@ -63,10 +60,10 @@ fn speck_round_backward(x1: &mut u64, x2: &mut u64, key: &u64) {
 #[test]
 fn basic_works1() {
 	let plain_text: [u64; 2] = [0x7469206564616d20, 0x6c61766975716520];
-	let key: [u64; 2] = [0x0706050403020100, 0x0f0e0d0c0b0a0908];
+	let key: Block128 = Block128::new(0x07060504030201000f0e0d0c0b0a0908);
 	let expected_ciphertext = [0x7860fedf5c570d18, 0xa65d985179783265];
 
-	let s: Speck = Speck::new(&key);
+	let s: Speck_128_128 = Speck_128_128::new(key);
 
 	let (cypher_a, cypher_b) = s.speck_encrypt(plain_text[0], plain_text[1]);
 	assert_eq!([cypher_a, cypher_b], expected_ciphertext);
