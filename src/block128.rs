@@ -73,5 +73,5 @@ fn block128_panic() {
 	//Should fail on 15 bytes
 	let input1: &[u8] = &[0x74, 0x69, 0x20, 0x65, 0x61, 0x6d, 0x20, 0x6c, 0x61, 0x76, 0x69, 0x75, 0x71, 0x65, 0x20];
 	let block1: Block128 = Block128::from(input1);
-	assert_eq!(block1.0, 0x74692065616d206c61766975716520;);
+	assert_eq!(block1.0, 0x74692065616d206c61766975716520);
 }
