@@ -60,7 +60,7 @@ fn speck_round_backward(x1: &mut u64, x2: &mut u64, key: &u64) {
 #[test]
 fn basic_works1() {
 	let plain_text: [u64; 2] = [0x7469206564616d20, 0x6c61766975716520];
-	let key: Block128 = Block128::new(0x07060504030201000f0e0d0c0b0a0908);
+	let key: Block128 = Block128::from(0x07060504030201000f0e0d0c0b0a0908);
 	let expected_ciphertext = [0x7860fedf5c570d18, 0xa65d985179783265];
 
 	let s: Speck_128_128 = Speck_128_128::new(key);

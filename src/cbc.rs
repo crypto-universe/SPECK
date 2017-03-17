@@ -129,8 +129,8 @@ impl <PG: PaddingGenerator> CBC <PG> {
 #[test]
 fn cbc_works1() {
 	let plaintext     = [0x7469206564616d20, 0x6c61766975716520];
-	let key: Block128 = Block128::new(0x07060504030201000f0e0d0c0b0a0908);
-	let iv1: Block128 = Block128::new(0xAFF92B19D2240A90DD55C781B2E48BB0);
+	let key: Block128 = Block128::from(0x07060504030201000f0e0d0c0b0a0908);
+	let iv1: Block128 = Block128::from(0xAFF92B19D2240A90DD55C781B2E48BB0);
 
 	let s: Speck_128_128 = Speck_128_128::new(key.clone());
 	let c: CBC<PKCS7> = CBC::new(iv1.clone(), key.clone());
